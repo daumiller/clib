@@ -28,7 +28,7 @@ int main(int argc, char **argv)
   if(fin)
   {
     sha = sha256StringFromFile(fin, false);
-    printf("Test 3 : %s\n", PASSFAIL(strcmp(sha, "40d6234e1aa3396e5fdca142abe1befbad93b7d2d19a9d4c9ea5f6b2343c7d9c") == 0));
+    printf("Test 3 : %s\n", PASSFAIL(strcmp(sha, "4b83c582b8e91264d9c6d24aa4857ebefa60aebd91b45d28a2a2c6ca5556825d") == 0));
     fclose(fin); free(sha);
   }
 
