@@ -3,8 +3,12 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <malloc.h>
-#include "/home/dillon/bin/pcre.lib/include/pcre.h"
+#include PCREHEADER
+#ifdef __APPLE__
+# include <stdlib.h>
+#else
+# include <malloc.h>
+#endif
 #include <clib/types.h>
 #include <clib/string.h>
 #include <clib/regex.h>

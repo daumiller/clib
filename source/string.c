@@ -2,14 +2,19 @@
 //==============================================================================
 #include <stdio.h>
 #include <string.h>
-#include <malloc.h>
 #include <ctype.h>
+#ifdef __APPLE__
+# include <stdlib.h>
+#else
+# include <malloc.h>
+#endif
 #include <clib/string.h>
 #include <clib/list.h>
 //==============================================================================
 static void stringBuilderAppend_internal(stringBuilder *sb, char *data, u32 length);
 //==============================================================================
 
+#ifndef __APPLE__
 char *strdup(char *str)
 {
   char *result = (char *)malloc(strlen(str) +1);
@@ -24,6 +29,7 @@ char *strndup(char *str, u32 count)
   result[count] = 0x00;
   return result;
 }
+#endif
 
 //==============================================================================
 

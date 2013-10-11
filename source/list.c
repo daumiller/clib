@@ -1,6 +1,10 @@
 // list.c
 //==============================================================================
-#include <malloc.h>
+#ifdef __APPLE__
+# include <stdlib.h>
+#else
+# include <malloc.h>
+#endif
 #include <clib/list.h>
 //==============================================================================
 static listItem *listItemForData(list *lst, void *data, bool exact);

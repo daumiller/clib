@@ -3,7 +3,11 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <malloc.h>
+#ifdef __APPLE__
+# include <stdlib.h>
+#else
+# include <malloc.h>
+#endif
 #include <clib/types.h>
 #include <clib/string.h>
 #include <clib/hash.h>
@@ -231,7 +235,7 @@ hash *hashDuplicate(hash *table)
     to   = dup->bucket[i];
     while(from)
     {
-      ins = (hashKvp *)calloc(1,sizeof(hashKvp));
+      ins = (hashKvp *)calloc(sizeof(hashKvp),1);
       table->type->kvpInsert(ins, from->key, from->val);
       if(to == NULL) dup->bucket[i] = ins; else to->next=ins;
       to = ins;

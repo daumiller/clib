@@ -1,7 +1,11 @@
 // base64.c
 //==============================================================================
 #include <string.h>
-#include <malloc.h>
+#ifdef __APPLE__
+# include <stdlib.h>
+#else
+# include <malloc.h>
+#endif
 #include <clib/types.h>
 #include <clib/base64.h>
 //==============================================================================

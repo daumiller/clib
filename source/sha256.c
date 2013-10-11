@@ -1,7 +1,11 @@
 // sha256.c
 //==============================================================================
 #include <string.h>
-#include <malloc.h>
+#ifdef __APPLE__
+# include <stdlib.h>
+#else
+# include <malloc.h>
+#endif
 #include <clib/sha256.h>
 //==============================================================================
 static void sha256Feed_Helper(sha256 *sha);

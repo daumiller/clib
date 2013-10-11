@@ -1,6 +1,10 @@
 #include <stdio.h>
 #include <string.h>
-#include <malloc.h>
+#ifdef __APPLE__
+# include <stdlib.h>
+#else
+# include <malloc.h>
+#endif
 #include <clib/string.h>
 
 #define PASSFAIL(x) ((x) ? "PASS" : "FAIL")

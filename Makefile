@@ -1,12 +1,13 @@
-TOP    = $(shell pwd)
-DIRSRC = $(TOP)/source
-DIRINC = $(TOP)/include
-DIROBJ = $(TOP)/object
-DIRLIB = $(TOP)/library
-DIRTST = $(TOP)/test
-CFLAGS = -Wall -std=c99 -I$(DIRINC)
-LIBLIB = /home/dillon/bin/pcre.lib/lib/libpcre.a
-TSTLIB = $(DIRLIB)/clib.a
+TOP     = $(shell pwd)
+DIRSRC  = $(TOP)/source
+DIRINC  = $(TOP)/include
+DIROBJ  = $(TOP)/object
+DIRLIB  = $(TOP)/library
+DIRTST  = $(TOP)/test
+DIRPCRE = /Users/dillon/Development/builds/pcre
+CFLAGS  = -Wall -std=c99 -I$(DIRINC) -DPCREHEADER='"$(DIRPCRE)/include/pcre.h"'
+LIBLIB  = $(DIRPCRE)/lib/libpcre.a
+TSTLIB  = $(DIRLIB)/clib.a
 
 all : clib tests
 
