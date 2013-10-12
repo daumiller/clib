@@ -2,12 +2,12 @@
 //==============================================================================
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
 #ifdef __APPLE__
 # include <stdlib.h>
 #else
 # include <malloc.h>
 #endif
+#include <ctype.h>
 #include <clib/string.h>
 #include <clib/list.h>
 //==============================================================================

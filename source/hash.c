@@ -235,7 +235,7 @@ hash *hashDuplicate(hash *table)
     to   = dup->bucket[i];
     while(from)
     {
-      ins = (hashKvp *)calloc(sizeof(hashKvp),1);
+      ins = (hashKvp *)calloc(1,sizeof(hashKvp));
       table->type->kvpInsert(ins, from->key, from->val);
       if(to == NULL) dup->bucket[i] = ins; else to->next=ins;
       to = ins;

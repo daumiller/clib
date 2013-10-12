@@ -4,21 +4,29 @@ DIRINC  = $(TOP)/include
 DIROBJ  = $(TOP)/object
 DIRLIB  = $(TOP)/library
 DIRTST  = $(TOP)/test
-DIRPCRE = /Users/dillon/Development/builds/pcre
+DIRPCRE = /home/dillon/bin/pcre.lib
+DIRINST = /home/dillon/bin/clib.lib
 CFLAGS  = -Wall -std=c99 -I$(DIRINC) -DPCREHEADER='"$(DIRPCRE)/include/pcre.h"'
 LIBLIB  = $(DIRPCRE)/lib/libpcre.a
 TSTLIB  = $(DIRLIB)/clib.a
 
 all : clib tests
 
+install : clib
+	rm -rf $(DIRINST)
+	mkdir -p $(DIRINST)/lib
+	cp $(DIRLIB)/clib.a $(DIRINST)/lib/
+	cp -R $(DIRINC) $(DIRINST)
+
 clib : $(DIRLIB)/clib.a
 
-$(DIRLIB)/clib.a : $(DIROBJ)/string.o \
-                   $(DIROBJ)/regex.o  \
-                   $(DIROBJ)/hash.o   \
-                   $(DIROBJ)/base64.o \
-                   $(DIROBJ)/list.o   \
-                   $(DIROBJ)/sha256.o
+$(DIRLIB)/clib.a : $(DIROBJ)/string.o    \
+                   $(DIROBJ)/regex.o     \
+                   $(DIROBJ)/hash.o      \
+                   $(DIROBJ)/base64.o    \
+                   $(DIROBJ)/list.o      \
+                   $(DIROBJ)/sha256.o    \
+                   $(DIROBJ)/arguments.o
 	mkdir -p $(DIRLIB)
 	cd $(DIROBJ);               \
 	ar -x $(LIBLIB);            \
@@ -28,28 +36,31 @@ $(DIROBJ)/%.o : $(DIRSRC)/%.c
 	mkdir -p $(DIROBJ)
 	gcc $(CFLAGS) $^ -c -o $@
 
-tests : clib               \
-        $(DIRTST)/regex.c  \
-        $(DIRTST)/hash.c   \
-        $(DIRTST)/base64.c \
-        $(DIRTST)/list.c   \
-        $(DIRTST)/string.c \
-        $(DIRTST)/sha256.c
-	gcc $(CFLAGS) $(DIRTST)/regex.c  $(TSTLIB) -o $(DIRTST)/regex
-	gcc $(CFLAGS) $(DIRTST)/hash.c   $(TSTLIB) -o $(DIRTST)/hash
-	gcc $(CFLAGS) $(DIRTST)/base64.c $(TSTLIB) -o $(DIRTST)/base64
-	gcc $(CFLAGS) $(DIRTST)/list.c   $(TSTLIB) -o $(DIRTST)/list
-	gcc $(CFLAGS) $(DIRTST)/string.c $(TSTLIB) -o $(DIRTST)/string
-	gcc $(CFLAGS) $(DIRTST)/sha256.c $(TSTLIB) -o $(DIRTST)/sha256
+tests : clib                  \
+        $(DIRTST)/regex.c     \
+        $(DIRTST)/hash.c      \
+        $(DIRTST)/base64.c    \
+        $(DIRTST)/list.c      \
+        $(DIRTST)/string.c    \
+        $(DIRTST)/sha256.c    \
+        $(DIRTST)/arguments.c
+	gcc $(CFLAGS) $(DIRTST)/regex.c     $(TSTLIB) -o $(DIRTST)/regex
+	gcc $(CFLAGS) $(DIRTST)/hash.c      $(TSTLIB) -o $(DIRTST)/hash
+	gcc $(CFLAGS) $(DIRTST)/base64.c    $(TSTLIB) -o $(DIRTST)/base64
+	gcc $(CFLAGS) $(DIRTST)/list.c      $(TSTLIB) -o $(DIRTST)/list
+	gcc $(CFLAGS) $(DIRTST)/string.c    $(TSTLIB) -o $(DIRTST)/string
+	gcc $(CFLAGS) $(DIRTST)/sha256.c    $(TSTLIB) -o $(DIRTST)/sha256
+	gcc $(CFLAGS) $(DIRTST)/arguments.c $(TSTLIB) -o $(DIRTST)/arguments
 	strip $(DIRTST)/regex
 	strip $(DIRTST)/hash
 	strip $(DIRTST)/base64
 	strip $(DIRTST)/list
 	strip $(DIRTST)/string
 	strip $(DIRTST)/sha256
+	strip $(DIRTST)/arguments
 
 clean :
-	rm -f $(DIROBJ)/*.o
+	rm -rf $(DIROBJ)
 
 veryclean :
 	rm -rf $(DIROBJ)
@@ -60,4 +71,5 @@ veryclean :
 	rm -f  $(DIRTST)/list
 	rm -f  $(DIRTST)/string
 	rm -f  $(DIRTST)/sha256
+	rm -f  $(DIRTST)/arguments
 

@@ -3,12 +3,12 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include PCREHEADER
 #ifdef __APPLE__
 # include <stdlib.h>
 #else
 # include <malloc.h>
 #endif
+#include PCREHEADER
 #include <clib/types.h>
 #include <clib/string.h>
 #include <clib/regex.h>

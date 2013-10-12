@@ -10,6 +10,7 @@
 #include <clib/hash.h>
 #include <clib/base64.h>
 #include <clib/sha256.h>
+#include <clib/arguments.h>
 
 //==============================================================================
 #endif //CLIB_HEADER
