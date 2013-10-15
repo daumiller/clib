@@ -1,7 +1,7 @@
 // sha256.h
 //==============================================================================
-#ifndef CLIB_BASE64_HEADER
-#define CLIB_BASE64_HEADER
+#ifndef CLIB_SHA256_HEADER
+#define CLIB_SHA256_HEADER
 //==============================================================================
 #include <stdio.h>
 #include <clib/types.h>
@@ -29,7 +29,7 @@ char *sha256StringFromString(char *str, bool upperCase);
 char *sha256StringFromFile  (FILE *fin, bool upperCase);
 
 //==============================================================================
-#endif //CLIB_BASE64_HEADER
+#endif //CLIB_SHA256_HEADER
 
 //==============================================================================
 //------------------------------------------------------------------------------

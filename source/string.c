@@ -240,6 +240,7 @@ void stringPrintF(string *str, u32 buffSize, const char *format, ...)
   va_list vl;
   va_start(vl, format);
   stringVPrintF(str, buffSize, format, vl);
+  va_end(vl);
 }
 
 void stringVPrintF(string *str, u32 buffSize, const char *format, va_list arg)
@@ -310,6 +311,28 @@ void stringBuilderAppendString(stringBuilder *sb, string *str)
   char *buff = (char *)malloc(str->length);
   memcpy(buff, str->data, str->length);
   stringBuilderAppend_internal(sb, buff, str->length);
+}
+
+void stringBuilderSeparateCString(stringBuilder *sb, char *between)
+{
+  u32 betlen = strlen(between);
+  if(betlen == 0) return;
+
+  struct stringBuilderComponent *curr = sb->origin;
+  while(curr)
+  {
+    if(curr->next)
+    {
+      struct stringBuilderComponent *sbc = (struct stringBuilderComponent *)malloc(sizeof(struct stringBuilderComponent));
+      sbc->length = betlen;
+      sbc->data   = strndup(between, betlen);
+      sbc->next   = curr->next;
+      curr->next  = sbc;
+      sb->length += betlen;
+      curr = sbc;
+    }
+    curr = curr->next;
+  }
 }
 
 char *stringBuilderToCString(stringBuilder *sb)

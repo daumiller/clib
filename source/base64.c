@@ -99,30 +99,6 @@ static void encodeTriplet(u8 *cin, u32 length, char *cout)
                  cout[1] = _idx64[(encVal >> 12) & 0x3F];
   if(length > 1) cout[2] = _idx64[(encVal >>  6) & 0x3F]; else cout[2] = '=';
   if(length > 2) cout[3] = _idx64[(encVal      ) & 0x3F]; else cout[3] = '=';
-
-  u32 test; u8 ctest[3]; bool good=true;
-  decodeQuartet(cout, ctest, &test);
-                 if(cin[0] != ctest[0]) good = false;
-  if(length > 1) if(cin[1] != ctest[1]) good = false;
-  if(length > 2) if(cin[2] != ctest[2]) good = false;
-  if(good == false)
-  {
-    if(length == 1)
-      printf("{ %02X } -> { %c %c %c %c } -> { %02X }\n",
-        (u32)cin[0],
-        cout[0], cout[1], cout[2], cout[3],
-        (u32)ctest[0]);
-    else if(length == 2)
-      printf("{ %02X %02X } -> { %c %c %c %c } -> { %02X %02X }\n",
-        (u32)cin[0], (u32)cin[1],
-        cout[0], cout[1], cout[2], cout[3],
-        (u32)ctest[0], (u32)ctest[1]);
-    else
-      printf("{ %02X %02X %02X } -> { %c %c %c %c } -> { %02X %02X %02X }\n",
-        (u32)cin[0], (u32)cin[1], (u32)cin[2],
-        cout[0], cout[1], cout[2], cout[3],
-        (u32)ctest[0], (u32)ctest[1], (u32)ctest[2]);
-  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -144,13 +120,13 @@ static void decodeQuartet(char *cin, u8 *cout, u32 *size)
 
 static u8 revIndex64(char cin, u32 *size)
 {
-  if(cin >= 'A') if(cin <= 'Z') return ( 0 + (cin - 'A'));
-  if(cin >= 'a') if(cin <= 'z') return (26 + (cin - 'a'));
-  if(cin >= '0') if(cin <= '9') return (52 + (cin - '0'));
-  if(cin == '+') return 62;
-  if(cin == '/') return 63;
-  if(size != NULL) if(cin == '=') (*size)--;
-  if(cin != '=') printf("revIndex64(%c) : Out of Index\n", cin);
+  if(cin >= 'a') if(cin <= 'z') return (26 + (cin - 'a')); // 0x61 - 0x7A
+  if(cin >= 'A') if(cin <= 'Z') return ( 0 + (cin - 'A')); // 0x41 - 0x5A
+  if(cin == '=') { if(size != NULL) (*size)--; return 0; } // 0x3D
+  if(cin >= '0') if(cin <= '9') return (52 + (cin - '0')); // 0x30 - 0x39
+  if(cin == '/') return 63;                                // 0x2F
+  if(cin == '+') return 62;                                // 0x2B
+  printf("revIndex64(%c) : Out of Index\n", cin);
   return 0;
 }
 

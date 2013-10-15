@@ -4,7 +4,7 @@ DIRINC  = $(TOP)/include
 DIROBJ  = $(TOP)/object
 DIRLIB  = $(TOP)/library
 DIRTST  = $(TOP)/test
-DIRPCRE = /home/dillon/bin/pcre.lib
+DIRPCRE = /Users/dillon/Development/builds/pcre
 DIRINST = /home/dillon/bin/clib.lib
 CFLAGS  = -Wall -std=c99 -I$(DIRINC) -DPCREHEADER='"$(DIRPCRE)/include/pcre.h"'
 LIBLIB  = $(DIRPCRE)/lib/libpcre.a
@@ -34,7 +34,7 @@ $(DIRLIB)/clib.a : $(DIROBJ)/string.o    \
 
 $(DIROBJ)/%.o : $(DIRSRC)/%.c
 	mkdir -p $(DIROBJ)
-	gcc $(CFLAGS) $^ -c -o $@
+	clang $(CFLAGS) $^ -c -o $@
 
 tests : clib                  \
         $(DIRTST)/regex.c     \
@@ -44,13 +44,13 @@ tests : clib                  \
         $(DIRTST)/string.c    \
         $(DIRTST)/sha256.c    \
         $(DIRTST)/arguments.c
-	gcc $(CFLAGS) $(DIRTST)/regex.c     $(TSTLIB) -o $(DIRTST)/regex
-	gcc $(CFLAGS) $(DIRTST)/hash.c      $(TSTLIB) -o $(DIRTST)/hash
-	gcc $(CFLAGS) $(DIRTST)/base64.c    $(TSTLIB) -o $(DIRTST)/base64
-	gcc $(CFLAGS) $(DIRTST)/list.c      $(TSTLIB) -o $(DIRTST)/list
-	gcc $(CFLAGS) $(DIRTST)/string.c    $(TSTLIB) -o $(DIRTST)/string
-	gcc $(CFLAGS) $(DIRTST)/sha256.c    $(TSTLIB) -o $(DIRTST)/sha256
-	gcc $(CFLAGS) $(DIRTST)/arguments.c $(TSTLIB) -o $(DIRTST)/arguments
+	clang $(CFLAGS) $(DIRTST)/regex.c     $(TSTLIB) -o $(DIRTST)/regex
+	clang $(CFLAGS) $(DIRTST)/hash.c      $(TSTLIB) -o $(DIRTST)/hash
+	clang $(CFLAGS) $(DIRTST)/base64.c    $(TSTLIB) -o $(DIRTST)/base64
+	clang $(CFLAGS) $(DIRTST)/list.c      $(TSTLIB) -o $(DIRTST)/list
+	clang $(CFLAGS) $(DIRTST)/string.c    $(TSTLIB) -o $(DIRTST)/string
+	clang $(CFLAGS) $(DIRTST)/sha256.c    $(TSTLIB) -o $(DIRTST)/sha256
+	clang $(CFLAGS) $(DIRTST)/arguments.c $(TSTLIB) -o $(DIRTST)/arguments
 	strip $(DIRTST)/regex
 	strip $(DIRTST)/hash
 	strip $(DIRTST)/base64

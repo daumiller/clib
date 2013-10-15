@@ -69,6 +69,7 @@ void stringBuilderAppendCharacter(stringBuilder *sb, char c, u32 count);
 void stringBuilderAppendCString(stringBuilder *sb, char *str);
 void stringBuilderAppendNCString(stringBuilder *sb, char *str, u32 length);
 void stringBuilderAppendString(stringBuilder *sb, string *str);
+void stringBuilderSeparateCString(stringBuilder *sb, char *between);
 char *stringBuilderToCString(stringBuilder *sb);
 string *stringBuilderToString(stringBuilder *sb);
 
