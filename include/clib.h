@@ -11,6 +11,7 @@
 #include <clib/base64.h>
 #include <clib/sha256.h>
 #include <clib/arguments.h>
+#include <clib/threadPool.h>
 
 //==============================================================================
 #endif //CLIB_HEADER

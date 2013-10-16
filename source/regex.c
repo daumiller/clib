@@ -103,7 +103,7 @@ regexMatch *regexExecute(regex *regex, char *str)
     status = i<<1;
     matchArr[i].position = vectors[status];
     length = vectors[status|1] - matchArr[i].position;
-    matchArr[i].string = strndup(str+matchArr[i].position, length);
+    matchArr[i].string = clstrndup(str+matchArr[i].position, length);
   }
   free(vectors);
 
@@ -166,11 +166,11 @@ void regexReplace_HelpA(regex *regex, char *str, char *sub, char **pre, char **m
   int i;
   *pre = *mid = *post = NULL;
   regexMatch *set = regexExecute(regex, str);
-  if(set == NULL) { (*pre)=strdup(str); return; }
+  if(set == NULL) { (*pre)=clstrdup(str); return; }
 
   i = strlen(set->sub[0].string);
-  if(set->sub[0].position > 0)                 *pre  = strndup(str, set->sub[0].position);
-  if((set->sub[0].position + i) < strlen(str)) *post = strdup(str + set->sub[0].position + i);
+  if(set->sub[0].position > 0)                 *pre  = clstrndup(str, set->sub[0].position);
+  if((set->sub[0].position + i) < strlen(str)) *post = clstrdup(str + set->sub[0].position + i);
 
   *mid = regexReplace_HelpB(set, sub);
   regexMatchFree(&set);
@@ -179,7 +179,7 @@ void regexReplace_HelpA(regex *regex, char *str, char *sub, char **pre, char **m
 
 char *regexReplace_HelpB(regexMatch *set, char *sub)
 {
-  char *working = strdup(sub), *tmp;
+  char *working = clstrdup(sub), *tmp;
   char ref[32];
   for(u32 i=1; i<set->count; i++)
   {
@@ -193,7 +193,7 @@ char *regexReplace_HelpB(regexMatch *set, char *sub)
 
 char *regexReplace_HelpC(char *origin, char *replace, char *with)
 {
-  char *processed = NULL, *pre, *post, *tmpA, *tmpB, *working = strdup(origin);
+  char *processed = NULL, *pre, *post, *tmpA, *tmpB, *working = clstrdup(origin);
   int lenRep = strlen(replace), lenWith = strlen(with), lenProc=0, len;
 
   tmpA = strstr(working, replace);
@@ -202,7 +202,7 @@ char *regexReplace_HelpC(char *origin, char *replace, char *with)
   {
     pre=post=NULL; len=0;
     if(processed) len += lenProc;
-    if(idx > 0) { pre = strndup(working, idx); len += strlen(pre); }
+    if(idx > 0) { pre = clstrndup(working, idx); len += strlen(pre); }
     len += lenWith;
     tmpB = tmpA = (char *)malloc(len + 1);
     if(processed) { tmpB += sprintf(tmpB, "%s", processed); free(processed); }
@@ -214,7 +214,7 @@ char *regexReplace_HelpC(char *origin, char *replace, char *with)
     len = strlen(working);
     if((idx + lenRep) < len)
     {
-      tmpA = strdup(working + idx + lenRep);
+      tmpA = clstrdup(working + idx + lenRep);
       free(working);
       working = tmpA;
       tmpA = strstr(working, replace);

@@ -341,7 +341,7 @@ static i32 hashDefault_KeyCompare(char *keyA, char *keyB)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 static void hashDefault_KvpInsert(hashKvp *kvp, char *key, void *val)
 {
-  kvp->key = strdup(key);
+  kvp->key = clstrdup(key);
   kvp->val = val;
 }
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

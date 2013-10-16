@@ -59,7 +59,7 @@ arguments *argumentsParseV(int argc, char **argv, bool allowExtra, u32 count, va
       if(allowExtra == false)
       {
         args->code    = ARGCODE_EXTRA;
-        args->message = strdup("No arguments supported.");
+        args->message = clstrdup("No arguments supported.");
       }
     }
     return args;

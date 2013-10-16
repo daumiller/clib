@@ -14,22 +14,23 @@
 static void stringBuilderAppend_internal(stringBuilder *sb, char *data, u32 length);
 //==============================================================================
 
-#ifndef __APPLE__
-char *strdup(char *str)
+char *clstrdup(char *str)
 {
-  char *result = (char *)malloc(strlen(str) +1);
-  strcpy(result, str);
-  return result;
+  u32 len = strlen(str);
+  char *ret = (char *)malloc(len+1);
+  memcpy(ret, str, len+1);
+  return ret;
 }
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-char *strndup(char *str, u32 count)
+
+char *clstrndup(char *str, u32 count)
 {
-  char *result = (char *)malloc(count + 1);
-  strncpy(result, str, count);
-  result[count] = 0x00;
-  return result;
+  u32 len = strlen(str);
+  if(len > count) len = count;
+  char *ret = (char *)malloc(len+1);
+  memcpy(ret, str, len);
+  ret[len] = 0x00;
+  return ret;
 }
-#endif
 
 //==============================================================================
 
@@ -296,14 +297,14 @@ void stringBuilderAppendCharacter(stringBuilder *sb, char c, u32 count)
 void stringBuilderAppendCString(stringBuilder *sb, char *str)
 {
   u32 length = strlen(str);  
-  char *buff = strndup(str, length);
+  char *buff = clstrdup(str);
   stringBuilderAppend_internal(sb, buff, length);
 }
 
 void stringBuilderAppendNCString(stringBuilder *sb, char *str, u32 length)
 {
-  char *buff = strndup(str, length);
-  stringBuilderAppend_internal(sb, buff, length);
+  char *buff = clstrndup(str, length);
+  stringBuilderAppend_internal(sb, buff, strlen(buff));
 }
 
 void stringBuilderAppendString(stringBuilder *sb, string *str)
@@ -325,7 +326,7 @@ void stringBuilderSeparateCString(stringBuilder *sb, char *between)
     {
       struct stringBuilderComponent *sbc = (struct stringBuilderComponent *)malloc(sizeof(struct stringBuilderComponent));
       sbc->length = betlen;
-      sbc->data   = strndup(between, betlen);
+      sbc->data   = clstrdup(between);
       sbc->next   = curr->next;
       curr->next  = sbc;
       sb->length += betlen;

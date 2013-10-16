@@ -7,10 +7,9 @@
 #include <clib/types.h>
 //==============================================================================
 
-#ifndef __APPLE__
-char *strdup(char *str);
-char *strndup(char *str, u32 count);
-#endif
+//strdup/strndup may or may not be available (not portable)...
+char *clstrdup(char *str);
+char *clstrndup(char *str, u32 max);
 
 //------------------------------------------------------------------------------
 
