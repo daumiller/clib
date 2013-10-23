@@ -4,13 +4,18 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <unistd.h>
-#include <dirent.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <ftw.h>
 #ifdef __linux__
 # include <malloc.h>
+//readdir_r & DT_DIR
+# define __USE_MISC
+# define __USE_BSD
+# include <dirent.h>
+//nftw
+# define __USE_XOPEN_EXTENDED
+# include <ftw.h>
 //Force thread-safe functions
 # define __USE_MISC
 # include <pwd.h>
@@ -25,8 +30,10 @@
 # define S_IFCHR __S_IFCHR
 # define S_IFDIR __S_IFDIR
 #else
+# include <dirent.h>
 # include <pwd.h>
 # include <string.h>
+# include <ftw.h>
 #endif
 #include <clib/fileSystem.h>
 #include <clib/string.h>
