@@ -10,11 +10,11 @@
 
 typedef void (*threadPoolFunct)(void *);
 
-typedef struct threadPoolTast_st
+typedef struct threadPoolTask_st
 {
   threadPoolFunct           funct;
   void                     *arg;
-  struct threadPoolTast_st *next;
+  struct threadPoolTask_st *next;
 } threadPoolTask;
 
 typedef struct
@@ -24,6 +24,7 @@ typedef struct
   pthread_mutex_t mutex;
   pthread_cond_t  condition;
   i32             load;
+  i32             running;
   threadPoolTask *origin;
   threadPoolTask *final;
 } threadPool;

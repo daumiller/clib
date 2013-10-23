@@ -1,0 +1,5 @@
+* asock on Linux
+  asock uses eventfd on linux, which requires a kernel version of 2.6.22 or greater.
+* pcre options
+  pcre configured with "./configure --prefix=$(DIRPCRE) --disable-cpp --enable-jit --enable-utf"
+

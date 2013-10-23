@@ -45,7 +45,7 @@ int main(int argc, char **argv)
   for(u32 i=0; i<32; i++)
   {
     sprintf(buff, "test%d", (int)i);
-    hashSetValue(table, buff, (void *)i);
+    hashSetValue(table, buff, (void *)(intptr_t)i);
   }
   u32 countIndex = 0;
   hashIterate(table, testFourHelper, (void *)&countIndex);

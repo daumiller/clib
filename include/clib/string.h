@@ -7,9 +7,12 @@
 #include <clib/types.h>
 //==============================================================================
 
-//strdup/strndup may or may not be available (not portable)...
+//strdup may or may not be available (not portable)...
 char *clstrdup(char *str);
-char *clstrndup(char *str, u32 max);
+//strndup may not either, but it's max-length is annoying; provide strdupn instead
+char *clstrdupn(char *str, u32 length);
+//non-terminated clstrdupn
+void *clmemdup(void *data, u32 size);
 
 //------------------------------------------------------------------------------
 

@@ -7,8 +7,6 @@
 #endif
 #include <clib/threadPool.h>
 //==============================================================================
-#define THREADRET(x) return (void *)(i64)(x)
-//==============================================================================
 static void threadPool_GetWork(threadPool *pool, threadPoolFunct *funct, void **arg);
 static void *threadPool_Worker(void *arg);
 //==============================================================================
@@ -16,11 +14,12 @@ static void *threadPool_Worker(void *arg);
 threadPool *threadPoolCreate(u32 size)
 {
   threadPool *pool = (threadPool *)malloc(sizeof(threadPool));
-  pool->size   = size;
-  pool->worker = (pthread_t *)malloc(sizeof(pthread_t) * size);
-  pool->load   = 0;
-  pool->origin = NULL;
-  pool->final  = NULL;
+  pool->size    = size;
+  pool->worker  = (pthread_t *)malloc(sizeof(pthread_t) * size);
+  pool->load    = 0;
+  pool->running = 0;
+  pool->origin  = NULL;
+  pool->final   = NULL;
   pthread_mutex_init(&(pool->mutex), NULL);
   pthread_cond_init(&(pool->condition), NULL);
   return pool;
@@ -46,6 +45,7 @@ void threadPoolFree(threadPool **pool)
 
 void threadPoolStart(threadPool *pool)
 {
+  pool->running = 0;
   if(pool->load < 0) pool->load = 0;
   bool broadcast = (pool->load > 0);
   if(broadcast)
@@ -64,7 +64,7 @@ void threadPoolStart(threadPool *pool)
 void threadPoolWait(threadPool *pool)
 {
   pthread_mutex_lock(&(pool->mutex));
-  while(pool->load > 0)
+  while((pool->load > 0) || (pool->running > 0))
     pthread_cond_wait(&(pool->condition), &(pool->mutex));
   pthread_mutex_unlock(&(pool->mutex));
 }
@@ -87,6 +87,7 @@ void threadPoolAddWork(threadPool *pool, threadPoolFunct funct, void *arg)
   threadPoolTask *tpt = (threadPoolTask *)malloc(sizeof(threadPoolTask));
   tpt->funct = funct;
   tpt->arg   = arg;
+  tpt->next  = NULL;
   if(pool->final  != NULL) pool->final->next = tpt;
   if(pool->origin == NULL) pool->origin = tpt;
   pool->final = tpt;
@@ -99,10 +100,12 @@ void threadPoolAddWork(threadPool *pool, threadPoolFunct funct, void *arg)
 static void threadPool_GetWork(threadPool *pool, threadPoolFunct *funct, void **arg)
 {
   pool->load--;
+  pool->running++;
   *funct = pool->origin->funct;
   *arg   = pool->origin->arg;
   threadPoolTask *tmp = pool->origin;
   pool->origin = pool->origin->next;
+  if(pool->final == tmp) pool->final = NULL;
   free(tmp);
 }
 
@@ -120,16 +123,24 @@ static void *threadPool_Worker(void *arg)
     if(pool->load == -1)
     {
       pthread_mutex_unlock(&(pool->mutex));
-      THREADRET(0);
+      return NULL;
     }
     else
     {
+      //Get Work; broadcast
       threadPool_GetWork(pool, &fn, &arg);
       pthread_cond_broadcast(&(pool->condition));
       pthread_mutex_unlock(&(pool->mutex));
+      //Do Work
       fn(arg);
+      //Decrement Running; broadcase
+      pthread_mutex_lock(&(pool->mutex));
+      pool->running--;
+      pthread_cond_broadcast(&(pool->condition));
+      pthread_mutex_unlock(&(pool->mutex));
     }
   }
+  return NULL;
 }
 
 //==============================================================================

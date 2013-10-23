@@ -22,13 +22,18 @@ char *clstrdup(char *str)
   return ret;
 }
 
-char *clstrndup(char *str, u32 count)
+char *clstrdupn(char *str, u32 length)
 {
-  u32 len = strlen(str);
-  if(len > count) len = count;
-  char *ret = (char *)malloc(len+1);
-  memcpy(ret, str, len);
-  ret[len] = 0x00;
+  char *ret = (char *)malloc(length + 1);
+  memcpy(ret, str, length);
+  ret[length] = 0x00;
+  return ret;
+}
+
+void *clmemdup(void *data, u32 size)
+{
+  void *ret = malloc(size);
+  memcpy(ret, data, size);
   return ret;
 }
 
@@ -303,7 +308,7 @@ void stringBuilderAppendCString(stringBuilder *sb, char *str)
 
 void stringBuilderAppendNCString(stringBuilder *sb, char *str, u32 length)
 {
-  char *buff = clstrndup(str, length);
+  char *buff = clstrdupn(str, length);
   stringBuilderAppend_internal(sb, buff, strlen(buff));
 }
 
