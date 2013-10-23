@@ -13,6 +13,7 @@
 #include <clib/arguments.h>
 #include <clib/threadPool.h>
 #include <clib/asock.h>
+#include <clib/filesystem.h>
 
 //==============================================================================
 #endif //CLIB_HEADER
