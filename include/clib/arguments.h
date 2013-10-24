@@ -33,26 +33,6 @@ typedef struct
   char       **argv;
 } arguments;
 
-/*
-bool  argForce;
-char *argOutput;
-i32   argCount;
-arguments *args = argumentsParse(argc, argv, false, 3,
-                         "f|force" , ARGTYPE_FLAG   |ARGTYPE_OPTIONAL, &argForce , false,
-                         "o|output", ARGTYPE_CSTRING|ARGTYPE_REQUIRED, &argOutput,  NULL,
-                         "n|count" , ARGTYPE_I32    |ARGTYPE_OPTIONAL, &argCount ,     1);
-
-if(args->code == ARGCODE_OKAY)
-  { ... }
-else
-{
-  printf("Error: %s\n", args->message);
-  argumentsFree(&args);
-  exit(-1);
-}
-argumentsFree(&args);
-*/
-
 arguments *argumentsParse (int argc, char **argv, bool allowExtra, u32 count, ...);
 arguments *argumentsParseV(int argc, char **argv, bool allowExtra, u32 count, va_list arg);
 void argumentsFree(arguments **args);

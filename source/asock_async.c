@@ -328,7 +328,11 @@ void asockAcceptComplete(void *arg)
   clientSock->fdTimeout = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
 #endif
 
-  asockRegister(clientSock);
+  //asockRegister(clientSock) {
+  pthread_mutex_lock(&(sock->worker->sockCountMutex));
+  sock->worker->sockCount++;
+  pthread_cond_broadcast(&(sock->worker->sockCountCond));
+  pthread_mutex_unlock(&(sock->worker->sockCountMutex)); // }
   UNBUSY(sock);
   sock->complete(clientSock, sock->completeData, ASOCK_STATUS_OK, NULL);
 }

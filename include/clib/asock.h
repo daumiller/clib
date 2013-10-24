@@ -66,8 +66,6 @@ void asockRead(asock *sock, void *buff, u32 length, asockComplete complete, void
 void asockWrite(asock *sock, void *buff, u32 length, asockComplete complete, void *data);
 void asockDisconnect(asock *sock, asockComplete complete, void *data);
 void asockFree(asock **sock);
-void asockRegister(asock *sock);
-void asockUnregister(asock *sock);
 
 asockWorker *asockWorkerCreate(u32 workers);
 void asockWorkerStart(asockWorker *worker);

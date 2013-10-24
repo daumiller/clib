@@ -28,6 +28,8 @@
 #include <clib/asock.h>
 #include "asockInternal.h"
 //==============================================================================
+static void asockRegister(asock *sock);
+static void asockUnregister(asock *sock);
 
 asock *asockCreate(asockWorker *worker, u32 timeout)
 {
@@ -67,7 +69,7 @@ void asockFree(asock **sock)
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-void asockRegister(asock *sock)
+static void asockRegister(asock *sock)
 {
   pthread_mutex_lock(&(sock->worker->sockCountMutex));
   sock->worker->sockCount++;
@@ -77,7 +79,7 @@ void asockRegister(asock *sock)
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-void asockUnregister(asock *sock)
+static void asockUnregister(asock *sock)
 {
   pthread_mutex_lock(&(sock->worker->sockCountMutex));
   sock->worker->sockCount--;
