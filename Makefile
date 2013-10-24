@@ -5,7 +5,7 @@ DIROBJ  = $(TOP)/object
 DIRLIB  = $(TOP)/library
 DIRTST  = $(TOP)/test
 DIRBIN  = $(TOP)/test/bin
-CC      = gcc
+CC      = clang
 CFLAGS  = -Wall -std=c99 -I$(DIRINC) -DPCREHEADER='"$(DIRPCRE)/include/pcre.h"'
 STRIP   = strip
 #ifdef __APPLE__
