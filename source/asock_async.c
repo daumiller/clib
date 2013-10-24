@@ -188,12 +188,15 @@ static void requestPollingFor(asock *sock, int flags, threadPoolFunct workOp, u3
   struct epoll_event event;
   if(timeout > 0)
   {
+    struct itimerspec its; memset(&its, 0, sizeof(struct itimerspec));
     memset(&event, 0, sizeof(struct epoll_event));
     event.events   = EPOLLIN | EPOLLET;
     event.data.ptr = sock;
     epoll_ctl(sock->worker->fdPoll, EPOLL_CTL_ADD, sock->fdTimeout, &event);
-    struct itimerspec its; memset(&its, 0, sizeof(struct itimerspec));
-    its.it_value.tv_nsec = ((long)timeout) * ((long)1000000); //ms->ns
+    u32 toNS = timeout % 1000;
+    u32 toS = (timeout - toNS) / 1000;
+    its.it_value.tv_sec  = toS;
+    its.it_value.tv_nsec = ((long)toNS) * ((long)1000000); //ms->ns
     timerfd_settime(sock->fdTimeout, 0, &its, NULL);
   }
   memset(&event, 0, sizeof(struct epoll_event));
@@ -344,10 +347,9 @@ void asockConnectWork(asock *sock)
   int status = getaddrinfo(host, NULL, &hints, &results);
   if(status != 0)
   {
-    char *message, buff[1024];
-    message = (strerror_r(errno, buff, 1024) == 0) ? clstrdup(buff) : clstrdup("Unknown getaddrinfo() error");
     UNBUSY(sock);
-    queueCompletionProxy(sock, sock->complete, sock->completeData, ASOCK_STATUS_FAILED, message);
+    char *message = clstrdup("Host lookup/resolution failed");
+    queueCompletionProxy(sock, sock->complete, sock->completeData, ASOCK_STATUS_BADHOST, message);
     return;
   }
   

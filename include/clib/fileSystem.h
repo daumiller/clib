@@ -22,8 +22,9 @@ bool fsPathExists     (char *path);
 bool fsPathIsFile     (char *path);
 bool fsPathIsDirectory(char *path);
 
-char *fsPathBase  (char *path);
-char *fsPathParent(char *path);
+char *fsPathNormalize(char *path);
+char *fsPathBase     (char *path);
+char *fsPathParent   (char *path);
 
 char *fsPathCurrent();
 char *fsPathHome();

@@ -74,6 +74,7 @@ void stringBuilderAppendString(stringBuilder *sb, string *str);
 void stringBuilderSeparateCString(stringBuilder *sb, char *between);
 char *stringBuilderToCString(stringBuilder *sb);
 string *stringBuilderToString(stringBuilder *sb);
+bool stringBuilderPop(stringBuilder *sb);
 
 //==============================================================================
 #endif //CLIB_STRING_HEADER

@@ -16,6 +16,7 @@ typedef enum
   ASOCK_STATUS_TIMEOUT = 0x0002, // timed out
   ASOCK_STATUS_DISCONN = 0x0003, // disconnected (already)
   ASOCK_STATUS_CONN    = 0x0004, // connected (already)
+  ASOCK_STATUS_BADHOST = 0x0005, // unable to resolve/route
   ASOCK_STATUS_FAILED  = 0xFFFF  // other/general failure
 } asockStatus;
 

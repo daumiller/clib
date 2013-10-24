@@ -364,6 +364,31 @@ string *stringBuilderToString(stringBuilder *sb)
   return str;
 }
 
+bool stringBuilderPop(stringBuilder *sb)
+{
+  if(sb->final == NULL) return false;
+
+  if(sb->final == sb->origin)
+  {
+    sb->length -= sb->final->length;
+    free(sb->final->data);
+    free(sb->final);
+    sb->final = sb->origin = NULL;
+    return true;
+  }
+
+  struct stringBuilderComponent *tmp = sb->final;
+  sb->length -= sb->final->length;
+  sb->final = sb->origin;
+  while(sb->final->next != tmp)
+    sb->final = sb->final->next;
+  sb->final->next = NULL;
+
+  free(tmp->data);
+  free(tmp);
+  return true;
+}
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 static void stringBuilderAppend_internal(stringBuilder *sb, char *data, u32 length)

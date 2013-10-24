@@ -103,7 +103,7 @@ static void *asockWorker_Poll(void *arg)
 
   //start polling
   struct epoll_event *events = (struct epoll_event *)calloc(sizeof(struct epoll_event), MAXEVENTS);
-  int updates, i; asock *sock; bool aborted = false;
+  int updates, i; asock *sock; bool aborted = false; char timeReadBuff[8];
   while(!aborted)
   {
     updates = epoll_wait(worker->fdPoll, events, MAXEVENTS, -1);
@@ -116,7 +116,10 @@ static void *asockWorker_Poll(void *arg)
       epoll_ctl(worker->fdPoll, EPOLL_CTL_DEL, sock->fd       , &event);
       epoll_ctl(worker->fdPoll, EPOLL_CTL_DEL, sock->fdTimeout, &event);
       //add event to work queue (assuming no more than 1 queued operation per socket here; because we store data on sock->)
-      sock->workOpEvents = (events[i].data.fd == sock->fdTimeout) ? EPOLLTIMEOUT : events[i].events;
+      if(read(sock->fdTimeout, timeReadBuff, 8) == 8)
+        sock->workOpEvents = EPOLLTIMEOUT;
+      else
+        sock->workOpEvents = events[i].events;
       threadPoolAddWork(worker->pool, (threadPoolFunct)(sock->workOp), sock);
     }
   }

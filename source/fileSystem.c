@@ -4,13 +4,18 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <unistd.h>
-#include <dirent.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <ftw.h>
 #ifdef __linux__
 # include <malloc.h>
+//readdir_r & DT_DIR
+# define __USE_MISC
+# define __USE_BSD
+# include <dirent.h>
+//nftw
+# define __USE_XOPEN_EXTENDED
+# include <ftw.h>
 //Force thread-safe functions
 # define __USE_MISC
 # include <pwd.h>
@@ -25,8 +30,10 @@
 # define S_IFCHR __S_IFCHR
 # define S_IFDIR __S_IFDIR
 #else
+# include <dirent.h>
 # include <pwd.h>
 # include <string.h>
+# include <ftw.h>
 #endif
 #include <clib/fileSystem.h>
 #include <clib/string.h>
@@ -44,6 +51,7 @@ bool fsPathIsFile(char *path)
 {
   struct stat st;
   if(stat(path, &st) != 0) return false;
+  if((st.st_mode & S_IFMT) & S_IFDIR) return false;
   return (((st.st_mode & S_IFMT) & (S_IFREG | S_IFBLK | S_IFCHR)) != 0);
 }
 
@@ -52,6 +60,61 @@ bool fsPathIsDirectory(char *path)
   struct stat st;
   if(stat(path, &st) != 0) return false;
   return (((st.st_mode & S_IFMT) & S_IFDIR) != 0);
+}
+
+char *fsPathNormalize(char *path)
+{
+  //split by '/'
+  string *clstr = stringFromCString(path);
+  u32 tokens = 0;
+  string **nodes = stringSplit(clstr, "/", 1, &tokens);
+  free(clstr);
+
+  if(tokens == 0)
+  {
+    for(u32 i=0; i<tokens; i++) free(nodes[i]); free(nodes);
+    if(path[0] == 0x00) return fsPathCurrent();
+    if(path[0] == '/' ) return clstrdup("/");
+    return NULL;
+  }
+
+  //find leader ('/', '.', '~')
+  stringBuilder *sb = stringBuilderCreate();
+  u32 tokIdx = 0;
+  if(path[0] != '/')
+  {
+    if((nodes[0]->length == 1) && (nodes[0]->data[0] == '~'))
+    {
+      tokIdx = 1;
+      char *home = fsPathHome();
+      stringBuilderAppendCString(sb, home);
+      free(home);
+    }
+    else
+    {
+      char *cwd = fsPathCurrent();
+      stringBuilderAppendCString(sb, cwd);
+      free(cwd);
+    }
+  }
+
+  //append nodes
+  for(; tokIdx < tokens; tokIdx++)
+  {
+    if(nodes[tokIdx]->length == 0) continue;
+    if(nodes[tokIdx]->length == 1) if(nodes[tokIdx]->data[0] == '.') continue;
+    if(nodes[tokIdx]->length == 2) if(nodes[tokIdx]->data[0] == '.') if(nodes[tokIdx]->data[1] == '.')
+      { stringBuilderPop(sb); stringBuilderPop(sb); continue; }
+    stringBuilderAppendCharacter(sb, '/', 1);
+    stringBuilderAppendString(sb, nodes[tokIdx]);
+  }
+  if(sb->length == 0) stringBuilderAppendCharacter(sb, '/', 1);
+
+  //combine & cleanup
+  for(u32 i=0; i<tokens; i++) free(nodes[i]); free(nodes);
+  char *normal = stringBuilderToCString(sb);
+  stringBuilderFree(&sb);
+  return normal;
 }
 
 char *fsPathBase(char *path)
@@ -64,6 +127,7 @@ char *fsPathBase(char *path)
     if(*term == '/') slash=term;
     term++;
   }
+  slash++;
   return clstrdupn(slash, term-slash);
 }
 
@@ -201,15 +265,19 @@ static listType fsDirList_ListType = {
   .dataCompare = (listDataCompare)fsDirList_Cmp   ,
   .dataFree    = (listDataFree   )fsDirList_Free
 };
-void fsDirectoryList_Helper(char *path, DIR *dir, list *lst, int flags)
+void fsDirectoryList_Helper(char *path, DIR *dir, list *lst, regex *filter, int flags)
 {
   struct dirent *entry, *result;
   u32 len = offsetof(struct dirent, d_name) + pathconf(path, _PC_NAME_MAX) + 1;
   entry = (struct dirent *)malloc(len);
 
-  int status = readdir_r(dir, entry, &result);
-  while(status == 0)
+  int status = 0; result = entry;
+  while((status == 0) && (result != NULL))
   {
+    status = readdir_r(dir, entry, &result);
+    if(status != 0   ) break;
+    if(result == NULL) break;
+
     bool isDir = (entry->d_type == DT_DIR);
     if(isDir) { if(flags & FS_DIRLIST_NODIRS ) continue; } else { if(flags & FS_DIRLIST_NOFILES) continue; }
     if(entry->d_name[0] == '.')
@@ -218,13 +286,12 @@ void fsDirectoryList_Helper(char *path, DIR *dir, list *lst, int flags)
       if(entry->d_name[1] == 0x00) if((flags & FS_DIRLIST_DOTDOT) == 0) continue;
       if(entry->d_name[1] == '.' ) if(entry->d_name[2] == 0x00) if((flags & FS_DIRLIST_DOTDOT) == 0) continue;
     }
+    if(filter) if(regexIsMatch(filter, entry->d_name) == false) continue;
 
     fsDirectoryItem *fsdi = (fsDirectoryItem *)malloc(sizeof(fsDirectoryItem));
     fsdi->name = clstrdup(entry->d_name);
     fsdi->isDirectory = isDir;
     listAppend(lst, fsdi);
-
-    status = readdir_r(dir, entry, &result);
   }
   free(entry);
 }
@@ -237,11 +304,11 @@ list *fsDirectoryList(char *path, int flags, regex *filter)
 
   if(flags & FS_DIRLIST_DIRSFIRST)
   {
-    fsDirectoryList_Helper(path, dir, lst, flags | FS_DIRLIST_NOFILES);
+    fsDirectoryList_Helper(path, dir, lst, filter, flags | FS_DIRLIST_NOFILES);
     rewinddir(dir);
   }
   if(flags & FS_DIRLIST_DIRSFIRST) flags |= FS_DIRLIST_NODIRS;
-  fsDirectoryList_Helper(path, dir, lst, flags);
+  fsDirectoryList_Helper(path, dir, lst, filter, flags);
 
   closedir(dir);
   return lst;

@@ -28,6 +28,7 @@ void sockDataFree(sockData *data)
 void serverAcceptor(asock *sock, asock *listener, u32 status, char *message);
 void serverPath(asock *sock, sockData *data, u32 status, char *message);
 void clientPath(asock *sock, sockData *data, u32 status, char *message);
+void errorPath (asock *sock, void *data, u32 status, char *message);
 
 //==============================================================================
 int main(int arg, char **argv)
@@ -36,8 +37,8 @@ int main(int arg, char **argv)
   asockWorkerStart(asw);
 
   bool status; u32 statusCode; char *statusDesc;
-  asock *sockServer = asockCreate(asw, 30000);
-  asock *sockClient = asockCreate(asw, 30000);
+  asock *sockServer  = asockCreate(asw, 30000);
+  asock *sockClient  = asockCreate(asw, 30000);
 
   status = asockBind(sockServer, "127.0.0.1", 4331, &statusCode, &statusDesc);
   if(!status) { printf("Error binding on server. %u - %s.\n", statusCode, statusDesc); exit(-1); }
@@ -46,6 +47,10 @@ int main(int arg, char **argv)
 
   asockAccept (sockServer, (asockComplete)serverAcceptor, (void *)sockServer);
   asockConnect(sockClient, "127.0.0.1", 4331, (asockComplete)clientPath, (void *)sockDataCreate(0));
+
+  asock *sockError; //1) resolution failure; 2) timed-out failure
+  sockError = asockCreate(asw,  2000); asockConnect(sockError, "fakesub.samus.org", 80, (asockComplete)errorPath, NULL);
+  sockError = asockCreate(asw,  2000); asockConnect(sockError, "8.8.8.8"          , 80, (asockComplete)errorPath, NULL);
 
   asockWorkerWait(asw);
   asockWorkerStop(asw, false, true);
@@ -86,7 +91,7 @@ void serverPath(asock *sock, sockData *data, u32 status, char *message)
   if(status != ASOCK_STATUS_OKAY)
   if(!((data->index == 0xFFFF) && (status == ASOCK_STATUS_DISCONN))) //if(0xFFFF){we don't care about 'already disconnected'}
   {
-    printf("Server Path error. %u: \"%s\".\n", status, message);
+    printf("Server Path error. %u: \"%s\".\n", status, message); //ONE of these is expected in this test
     if(message) free(message);
     if(data->index != 0xFFFF)
     {
@@ -180,4 +185,18 @@ void clientPath(asock *sock, sockData *data, u32 status, char *message)
       asockFree(&sock);
       return;
   }
+}
+
+//==============================================================================
+void errorPath(asock *sock, void *data, u32 status, char *message)
+{
+  if(status == ASOCK_STATUS_BADHOST)
+    printf("Error path failed resolution. Thread 0x%016llx\n", (unsigned long long)(void *)pthread_self());
+  else if(status == ASOCK_STATUS_TIMEOUT)
+    printf("Error path timed-out.         Thread 0x%016llx\n", (unsigned long long)(void *)pthread_self());
+  else
+    printf("Unexpected error path. %u: \"%s\".\n", status, message);
+
+  if(message) free(message);
+  asockFree(&sock);
 }
