@@ -1,0 +1,227 @@
+clib > regex
+================================================================================
+  Regular expression matching and replacing (via PCRE).
+
+--------------------------------------------------------------------------------
+Header
+--------------------------------------------------------------------------------
+#include <clib/regex.h>
+
+--------------------------------------------------------------------------------
+Constants
+--------------------------------------------------------------------------------
+  #define REGEX_DEFAULT          0x00000000 // (default options)
+  #define REGEX_CASE_INSENSITIVE 0x00000001 // ignore case in regex
+  #define REGEX_MULTILINE        0x00000002 // multi-line regex
+  #define REGEX_DOT_ALL          0x00000004 // dot matches any character (including newline)
+  #define REGEX_DOLLAR_EOF       0x00000020 // '$' matches end of input, not end of lines
+  #define REGEX_UNGREEDY         0x00000200 // ungreedy by default, greedy with '?' (greedy invert)
+  #define REGEX_NEWLINE_CR       0x00100000 // newline is CR/0x0D
+  #define REGEX_NEWLINE_LF       0x00200000 // newline is LF/0x0A
+  #define REGEX_NEWLINE_CRLF     0x00300000 // newline is CRLF/0x0D0A
+  #define REGEX_NEWLINE_ANY      0x00400000 // newline is any of CR/LF/CRLF or unicode newline
+  #define REGEX_NEWLINE_ANYCRLF  0x00500000 // newline is any of CR/LF/CRLF
+  #define REGEX_JAVASCRIPT       0x02000000 // JavaScript compatible mode
+  #define REGEX_NO_UTF8          0x20000000 // non-UTF8 mode
+  #define REGEX_NO_COMPILE       0x40000000 // do not compile expressions
+
+--------------------------------------------------------------------------------
+Structures
+--------------------------------------------------------------------------------
+** regex **
+  Regular expression internal data container.
+  Callers should not need to access internal data.
+
+  typedef struct
+  {
+    void *pcre;  // PCRE managed regex data
+    void *study; // PCRE managed study/compiled data
+  } regex;
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** regexMatch **
+
+  Regular expression match data.
+  Returned from a *regexExecute* function call.
+
+  typedef struct
+  {
+    u32       count; // number of sub-group matches (should be at least 1)
+    regexSub *sub;   // array of sub-group matches (in *regexSub* structs)
+  } regexMatch;
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** regexSub **
+
+  Regular expression sub-group match data.
+  Provided inside *regexMatch* structs.
+
+typedef struct
+{
+  char *string;   // regexMatch() allocated, zero terminated, c string of match contents
+  u32   position; // offset/index of this match within the original string
+} regexSub;
+
+--------------------------------------------------------------------------------
+Functions
+--------------------------------------------------------------------------------
+** regexCreate **
+  Create/compile a new regular expression.
+
+  PROTOTYPE:
+    regex *regexCreate(char *expr, u32 flags, char **err);
+
+  PARAMETERS:
+    char  *expr  | regular expression to create (as a zero terminated c string)
+    u32    flags | flags/options (REGEX_ *Constants*)
+    char **err   | pointer (char *) to receive error message if failure
+
+  RETURNS:
+    On success, a newly allocated regex struct.
+    On failure, NULL; with detailed error message in *err.
+
+  NOTES:
+    > Caller should cleanup returned handle with *regexFree* when finished.
+    > On failure, caller is responsible for free()ing the string returned in *err.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** regexFree **
+  Free resources used by a *regex* struct.
+
+  PROTOTYPE:
+    void regexFree (regex **regex);
+
+  PARAMETERS:
+    regex **regex | **regex to cleanup
+
+  NOTES:
+    > *regex will be set to NULL
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** regexIsMatch **
+  Test if regex matches provided string.
+
+  PROTOTYPE:
+    bool regexIsMatch(regex *regex, char *str);
+
+  PARAMETERS:
+    regex *regex | regex struct of prepared expression
+    char  *str   | string to test against (zero terminated c string)
+
+  RETURNS:
+    true if regex matches string.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** regexExecute **
+  Execute regular expression with provided string, return matches.
+
+  PROTOTYPE:
+    regexMatch *regexExecute(regex *regex, char *str);
+
+  PARAMETERS:
+    regex *regex | regex to match with
+    char  *str   | string to match against
+
+  RETURNS:
+    On success/if matching, newly allocated *regexMatch* struct.
+    On failure/non-match, NULL.
+
+  NOTES:
+    > The first *regexSub* is the full match string.
+    > Any additional *regexSub*s correspond to expression capture-groups.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** regexReplace **
+  Replace occurence(s) of expression match(es) in string with substitute.
+  Return newly allocated string of resulting replacements.
+
+  PROTOTYPE:
+    char *regexReplace(regex *regex, char *str, char *sub, bool global);
+
+  PARAMETERS:
+    regex *regex  | regex to match with
+    char  *str    | string to match against
+    char  *sub    | string to replace with (may contain capture-group references)
+    bool   global | if(false) only replace the first match, if(true) replace all matches
+
+  RETURNS:
+    Newly allocated copy of provided string with replacements made.
+
+  NOTES:
+    > Caller is responsible for free()ing returned string (even if no matches).
+    > sub string may contain back references to capture-groups with '$n' ($1, $2, ...).
+
+  BUGS:
+    > '$' references aren't currently checked for a preceeding '\'.
+      If there is a capture group [n], and what appears to be a reference "$[n]",
+      it will be replaced, even if it was properly escaped ("\$[n]").
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** regexMatchFree **
+  Free all resources used by a *regexMatch* struct (and it's contained *regexSub*s)
+
+  PROTOTYPE:
+    void regexMatchFree(regexMatch **m);
+
+  PARAMETERS:
+    regexMatch **m | **regexMatch to cleanup
+
+  NOTES:
+    > *m will be set to NULL
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** regexEscape **
+  Create a newly allocated copy of provided string, with all regex operators escaped.
+  Helper for exact-text matching, or user input that shouldn't use regex operators.
+
+  PROTOTYPE:
+    char *regexEscape(char *str);
+
+  PARAMETERS:
+    char *str | string to escape (zero terminated c string)
+
+  RETURNS:
+    Newly allocated copy of escaped string (zero terminated c string)
+
+  NOTES:
+    > Caller is responsible for free()ing returned string
+
+--------------------------------------------------------------------------------
+Example
+--------------------------------------------------------------------------------
+#include <stdio.h>
+#include <stdlib.h>
+#include <clib/regex.h>
+
+int main(int argc, char **argv)
+{
+  char *input = "Hello World";
+  printf("Original String : %s\n", input);
+
+  char *err;
+  // create a regular expression to match to strings
+  regex *rx = regexCreate("([^\\s]+) ([^\\s]+)", REGEX_DEFAULT, &err);
+  if(err)
+  {
+    printf("Regular expression error : %s\n", err);
+    free(err);
+    return -1;
+  }
+
+  // see if we match
+  printf("Is a Match      : %s\n", regexIsMatch(rx, input) ? "yes" : "no");
+
+  // swap our words
+  char *output = regexReplace(rx, input, "$2 $1", false);
+  printf("Replaced String : %s\n", output);
+
+  //cleanup
+  free(output);
+  regexFree(&rx);
+
+  return 0;
+}
+
+================================================================================
+--------------------------------------------------------------------------------
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

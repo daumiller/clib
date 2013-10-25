@@ -1,0 +1,108 @@
+clib > base64
+================================================================================
+  Base64 data encoding/decoding.
+
+--------------------------------------------------------------------------------
+Header
+--------------------------------------------------------------------------------
+#include <clib/base64.h>
+
+--------------------------------------------------------------------------------
+Functions
+--------------------------------------------------------------------------------
+** base64EncodeArr **
+  Encode raw data array to base64 string.
+
+  PROTOTYPE:
+    char *base64EncodeArr(u8 *data, u32 length);
+
+  PARAMETERS:
+    u8 *data   | (byte) array of data to encode
+    u32 length | length of data to encode
+
+  RETURNS:
+    Newly allocated, zero terminated, c-string of base64 encoded data.
+
+  NOTES:
+    > Caller responsible for free()ing returned value.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** base64DecodeStr **
+  Decode base64 string to raw data array.
+
+  PROTOTYPE:
+    u8 *base64DecodeStr(char *data, u32 *size);
+
+  PARAMETERS:
+    char *data | base64 c-string (requires zero termination)
+    u32  *size | pointer to u32 to receive decoded size (REQUIRED)
+
+  RETURNS:
+    Newly allocated array of decoded bytes (of size *size).
+
+  NOTES:
+    > Caller responsible for free()ing returned value.
+    > Do not pass NULL for size parameter.
+    > Maybe an option for appending a zero-byte would be useful?
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** base64EncodeFile **
+  Read from input file, encode as base64, and write to output file.
+
+  PROTOTYPE:
+    void base64EncodeFile(FILE *fin, FILE *fout);
+
+  PARAMETERS:
+    FILE *fin  | input file; already opened and positioned
+    FILE *fout | output file; already opened and positioned
+
+  NOTES:
+    > fin is read until EOF (maybe a size option should be added? with -1?)
+    > fin/fout are not fclose()d by this function.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** base64DecodeFile **
+  Read from input file, decode from base64, and write to output file.
+
+  PROTOTYPE:
+    void base64DecodeFile(FILE *fin, FILE *fout);
+
+  PARAMETERS:
+    FILE *fin  | input file; already opened and positioned
+    FILE *fout | output file; already opened and positioned
+
+  NOTES:
+    > fin is read until EOF.
+    > fin/fout are not fclose()d by this function.
+
+--------------------------------------------------------------------------------
+Example
+--------------------------------------------------------------------------------
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <clib.h>
+
+int main(int argc, char **argv)
+{
+  u32 decodedLength;
+  char *sRaw    = "Hello World in base64!";
+  char *sBase64 = base64EncodeArr((u8 *)sRaw, strlen(sRaw));
+  char *sReRaw  = (char *)base64DecodeStr(sBase64, &decodedLength);
+
+  //sReRaw is really a byte array, and NOT zero-terminated
+  //overwriting, realloc()ing, or something else is required to use it as a cstr
+  sReRaw[decodedLength-1] = 0x00;
+
+  printf("%s\n", sRaw   );
+  printf("%s\n", sBase64);
+  printf("%s\n", sReRaw ); //overwrote '!'
+
+  free(sBase64);
+  free(sReRaw);
+  return 0;
+}
+
+================================================================================
+--------------------------------------------------------------------------------
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

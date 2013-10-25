@@ -1,0 +1,211 @@
+clib > sha256
+================================================================================
+  SHA2/SHA-256 data hashing.
+
+--------------------------------------------------------------------------------
+Header
+--------------------------------------------------------------------------------
+#include <clib/sha256.h>
+
+--------------------------------------------------------------------------------
+Structures
+--------------------------------------------------------------------------------
+** sha256 **
+  Temporary container for multi-step hashing data.
+  Callers should not need access to internal members (but here it is).
+
+  typedef struct
+  {
+    u64 length;    // total processed length
+    u8  chunk[64]; // unprocessed chunk data
+    u32 chunkSize; // unprocessed chunk size
+    u32 hash[8];   // current hashing values
+  } sha256;
+
+--------------------------------------------------------------------------------
+Functions
+--------------------------------------------------------------------------------
+** sha256Begin **
+  Begin a multi-step sha256 hashing operation.
+  Create a handle for feeding data into.
+
+  PROTOTYPE:
+    sha256 *sha256Begin();
+
+  RETURNS:
+    Newly allocated *sha256* struct.
+
+  NOTES:
+    > Caller should cleanup returned handle with *sha256Free* when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** sha256Feed **
+  Feed data to a previously created sha256 struct.
+  Allows multi-step feeding of arbitrary sizes, into a single hash value.
+
+  PROTOTYPE:
+    void sha256Feed(sha256 *sha, void *data, u32 length);
+
+  PARAMETERS:
+    sha256 *sha    | *sha256 struct that we're feeding
+    void   *data   | data to add to hash
+    u32     length | length of data to process
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** sha256Complete **
+  Complete a multi-step hashing operation.
+
+  PROTOTYPE:
+    void sha256Complete(sha256 *sha, u8 *hash);
+
+  PARAMETERS:
+    sha256 *sha  | *sha256 struct that we're completing
+    u8     *hash | pointer to caller provided u8 array of (at least) 32 bytes
+                 | final hash will be placed in (the first 32 bytes of) this array
+
+  NOTES:
+    > u8 *hash value must be pre-allocated by the caller.
+    > Maybe this function should take care of *sha256Free* operations itself?
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** sha256Free **
+  Free resources used by multi-step hashing data.
+
+  PROTOTYPE:
+    void sha256Free(sha256 **sha);
+
+  PARAMETERS:
+    sha256 **sha | **sha256 struct to cleanup
+
+  NOTES:
+    > *sha256 will be set to NULL
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** sha256FromData **
+  Create (newly allocated) hash from data array.
+
+  PROTOTYPE:
+    u8 *sha256FromData(void *data, u32 length);
+
+  PARAMETERS:
+    void *data   | data array to hash
+    u32   length | length of data to hash
+
+  RETURNS:
+    Newly allocated array of 32 bytes; containing sha256 hash.
+
+  NOTES:
+    > Caller is responsible for free()ing returned array.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** sha256FromString **
+  Create (newly allocated) hash from string data.
+
+  PROTOTYPE:
+    u8 *sha256FromString(char *str);
+
+  PARAMETERS:
+    char *str | string to hash (c string; zero terminated)
+
+  RETURNS:
+    Newly allocated array of 32 bytes; containing sha256 hash.
+
+  NOTES:
+    > Caller is responsible for free()ing returned array.
+    > Hashing does not include str's terminating zero byte.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** sha256FromFile **
+  Create (newly allocated) hash from (already opened) file.
+
+  PROTOTYPE:
+    u8 *sha256FromFile(FILE *fin);
+
+  PARAMETERS:
+    FILE *fin | input file; already opened and positioned
+
+  RETURNS:
+    Newly allocated array of 32 bytes; containing sha256 hash.
+
+  NOTES:
+    > Caller is responsible for free()ing returned array.
+    > File is read until EOF.
+    > Maybe a size option would be useful?
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** sha256StringFromData **
+  Return a hexadecimal string of the hash of provided data.
+
+  PROTOTYPE:
+    char *sha256StringFromData(void *data, u32 length, bool upperCase);
+
+  PARAMETERS:
+    void *data      | data to hash
+    u32   length    | length of data
+    bool  upperCase | whether to create string with lower or upper cased letters
+
+  RETURNS:
+    Newly allocated, zero terminated, c string containing hexadecimal hash (65 bytes).
+
+  NOTES:
+    > Caller is responsible for free()ing returned string.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** sha256StringFromString **
+  Returns a hexadecimal string of the hash of the provided string (excluding terminator).
+
+  PROTOTYPE:
+    char *sha256StringFromString(char *str, bool upperCase);
+
+  PARAMETERS:
+    char *str       | c string to encode (zero terminated)
+    bool  upperCase | whether to create string with lower or upper cased letters
+
+  RETURNS:
+    Newly allocated, zero terminated, c string containing hexadecimal hash (65 bytes).
+
+  NOTES:
+    > Caller is responsible for free()ing returned string.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** sha256StringFromFile **
+  Returns a hexadecimal string of the hash of the contents of the provided file.
+
+  PROTOTYPE:
+    char *sha256StringFromFile(FILE *fin, bool upperCase);
+
+  PARAMETERS:
+    FILE *fin       | input file; already opened and positioned
+    bool  upperCase |  whether to create string with lower or upper cased letters
+
+  RETURNS:
+    Newly allocated, zero terminated, c string containing hexadecimal hash (65 bytes).
+
+  NOTES:
+    > Caller is responsible for free()ing returned string.
+    > File is read until EOF.
+    > Maybe a size parameter would be useful?
+
+--------------------------------------------------------------------------------
+Example
+--------------------------------------------------------------------------------
+#include <stdio.h>
+#include <string.h>
+#include <clib/sha256.h>
+
+int main(int argc, char **argv)
+{
+  char *data = "Hello SHA-256 hashing world!";
+  char *hash = sha256StringFromString(data, false);
+  char *expc = "5350853de3cf4b8b8eac9b989a65839519b187cbeda158b2154a42f27f448345" \
+               "5350853de3cf4b8b8eac9b989a65839519b187cbeda158b2154a42f27f448345";
+
+  printf("Input    : %s\n", data);
+  printf("Output   : %s\n", hash);
+  printf("Expected : %s\n", expc);
+  printf("Correct  : %s\n", (strcmp(hash,expc) == 0) ? "yes" : "no");
+}
+
+================================================================================
+--------------------------------------------------------------------------------
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

@@ -1,0 +1,155 @@
+clib > arguments
+================================================================================
+  Command line argument parsing.
+
+--------------------------------------------------------------------------------
+Header
+--------------------------------------------------------------------------------
+#include <clib/arguments.h>
+
+--------------------------------------------------------------------------------
+Enumerations
+--------------------------------------------------------------------------------
+** argumentType **
+  Per-argument parsing options. 
+
+  typedef enum
+  {
+    ARGTYPE_FLAG     = 0x00, // Arg is a flag/bool; it does not have a trailing value (default).
+    ARGTYPE_CSTRING  = 0x01, // Arg has a string value.
+    ARGTYPE_I32      = 0x02, // Arg has an i32 vale.
+    ARGTYPE_F32      = 0x03, // Arg has an f32 value.
+    ARGTYPE_OPTIONAL = 0x00, // An optional argument (default).
+    ARGTYPE_REQUIRED = 0x10  // A required argument.
+  } argumentType;
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** argumentCode **
+  Argument parsing results code. 
+
+  typedef enum
+  {
+    ARGCODE_OKAY    = 0x00, // All arguments parsed okay.
+    ARGCODE_EXTRA   = 0x01, // Extra arguments were found (and returned in arguments->argc/argv).
+    ARGCODE_MISSING = 0x02, // One or more ARGTYPE_REQUIRED arguments were missing.
+    ARGCODE_INVALID = 0x04  // An invalid argument was passed (value w/ flag; no-value w/ non-flag).
+  } argumentCode;
+  
+--------------------------------------------------------------------------------
+Structures
+--------------------------------------------------------------------------------
+** arguments **
+  Main argument interfacing struct. 
+
+  typedef struct
+  {
+    argumentCode code;     // Parsing results code.
+    char        *message;  // Parsing results message (if code != ARGCODE_OKAY).
+    int          argc;     // Number of remaining/extra arguments.
+    char       **argv;     // Array of remaining/extra arguments.
+  } arguments;
+
+--------------------------------------------------------------------------------
+Functions
+--------------------------------------------------------------------------------
+** argumentsParse **
+  Parses supplied arguments, filling variables with specified values.
+  Returns a struct with result code, error message, and any remaining arguments.
+
+  PROTOTYPE:
+    arguments *argumentsParse (int argc, char **argv, bool allowExtra, u32 count, ...);
+
+  PARAMETERS:
+    int    argc       | original argument count
+    char **argv       | original argument array
+    bool   allowExtra | allow extra arguments. if(false) ARGCODE_EXRA will be set, and arguments->message will be populated
+    u32    count      | number of following arguments to be parsed
+    ...               | (count) numbered sets of :
+      char *argStr      | argument matching string. May contain short ("-") and/or long ("--") values, separated by '|'.
+                        \ for example: "v", "v|verbose", "|verbose" are all valid options, matching "-v" and/or "--verbose".
+      argumentType opts | options for parsing this argument
+      void *dest        | destination data container.
+                        \ ARGTYPE_FLAG requires a (bool *), ARGTYPE_CSTRING requires a (char **),
+                        \ ARGTYPE_I32 requires an (i32 *), ARGTYPE_F32 requires an (f32 *)
+      (type) default    | default value. Only set for optional parameters, but required to be specified for all.
+                        \ (type) should correspond to argumentType parameter (bool/char */i32/f32).
+
+  RETURNS:
+    Pointer to newly allocated and populated *arguments* structure.
+
+  NOTES:
+    > Caller should cleanup returned handle with *argumentsFree* when finished.
+    > Any returned (char *) from parsed arguments are pointer to indices within the original argv strings,
+      ang should not be free()d.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** argumentsParseV **
+  Parses supplied arguments, filling variables with specified values.
+  Returns a struct with result code and, error message, and any remaining arguments.
+
+  PROTOYPE:
+    arguments *argumentsParseV(int argc, char **argv, bool allowExtra, u32 count, va_list arg);
+
+  PARAMETERS:
+    same as *argumentsParse*, with (va_list) replacing (...)
+
+  RETURNS:
+    same as *argumentsParse*
+
+  NOTES:
+    > Same as *argumentsParse*, but taking a va_list parameter.
+    > va_start() and va_end() are NOT called within this function.
+    > Caller should cleanup returned handle with *argumentsFree* when finished.
+    > Caller responsible for free()ing returned value.
+    > Any returned (char *) from parsed arguments are pointer to indices within the original argv strings,
+      ang should not be free()d.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** argumentsFree **
+  Free all resources used by an *arguments* struct (returned from an *argumentsParse* call)
+
+  PROTOTYPE:
+    void argumentsFree(arguments **args);
+
+  PARAMETERS:
+    arguments **args | ** to arguments structure to free.
+
+  NOTES:
+    > Original pointer will be set to NULL.
+
+--------------------------------------------------------------------------------
+Example
+--------------------------------------------------------------------------------
+#include <stdio.h>
+#include <clib.h>
+
+int main(int argc, char **argv)
+{
+  bool  argForce;  //user can 'force' whatever action we're performing (an optional flag)
+  char *argOutput; //where we should write output (a required path string)
+  i32   argCount;  //number of times we should process whatever (optional, default to 1)
+
+  arguments *args = argumentsParse(argc, argv, false, 3,
+                       "f|force" , ARGTYPE_FLAG   |ARGTYPE_OPTIONAL, &argForce , false,
+                       "o|output", ARGTYPE_CSTRING|ARGTYPE_REQUIRED, &argOutput,  NULL,
+                       "n|count" , ARGTYPE_I32    |ARGTYPE_OPTIONAL, &argCount ,     1);
+
+  if(args->code == ARGCODE_OKAY)
+  {
+    //if(argForce || !alreadyDone)
+    //  process something argCount times
+    //  write output to argOutput
+    argumentsFree(&args); //cleanup
+    return 0;             //ran okay
+  }
+  else
+  {
+    printf("Error: %s\n", args->message); //tell user how they screwed up
+    argumentsFree(&args);                 //cleanup
+    return -1;                            //tell shell about the failure
+  }
+}
+
+================================================================================
+--------------------------------------------------------------------------------
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

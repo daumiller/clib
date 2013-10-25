@@ -1,0 +1,264 @@
+clib > hash
+================================================================================
+  Hashed key associative array.
+  Quick lookups, dynamic object models, other fun things.
+
+--------------------------------------------------------------------------------
+Header
+--------------------------------------------------------------------------------
+#include <clib/hash.h>
+
+--------------------------------------------------------------------------------
+Function Prototypes
+--------------------------------------------------------------------------------
+** hashType Functions **
+  Prototypes used by the *hashType* structure.
+
+  typedef u32  (*hashFunct)(void *key);
+  typedef i32  (*hashKeyCompare)(void *keyA, void *keyB);
+  typedef void (*hashKvpInsert)(hashKvp *kvp, void *key, void *val);
+  typedef void (*hashKvpAssign)(hashKvp *kvp, void *val);
+  typedef void (*hashKvpFree)(hashKvp *kvp);
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashIterator **
+  Iterator prototype for *hashIterate*.
+  Returns true to continue iteration.
+
+  typedef bool (*hashIterator)(hash *table, hashKvp *kvp, void *data);
+
+--------------------------------------------------------------------------------
+Structures
+--------------------------------------------------------------------------------
+** hashType **
+  Hash type descriptor.
+  Function pointers to control hash behavior.
+  The hash module has an internal default type, for (char *) string keys and (void *) data values.
+
+  typedef struct
+  {
+    hashFunct      hash;       // hashing function
+    hashKeyCompare keyCompare; // key comparison function
+    hashKvpInsert  kvpInsert;  // key-value-pair insertion
+    hashKvpAssign  kvpAssign;  // key-value-pair assignment
+    hashKvpFree    kvpFree;    // key-value-pair cleanup
+    f32            loadLo;     // low key/bucket ratio that triggers shrinking
+    f32            loadHi;     // high key/bucket ratio that triggers growing
+  } hashType;
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hash **
+  Main hash container.
+  Callers should not need to access members other than "entries" count.
+
+  typedef struct
+  {
+    hashType  *type;    // *hashType* functions
+    u32        buckets; // number of buckets
+    u32        entries; // number of entries/keys
+    u32        mask;    // index mask to scale hash to buckets
+    hashKvp  **bucket;
+  } hash;
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashKvp **
+  Hash key value pair.
+
+  typedef struct struct_hashKvp
+  {
+    void *key;  // key
+    void *val;  // value
+    u32   hash; // 4 bytes of hash
+    struct struct_hashKvp *next; // next kvp
+  } hashKvp;
+
+--------------------------------------------------------------------------------
+Functions
+--------------------------------------------------------------------------------
+** hashCreate **
+
+  PROTOTYPE:
+    hash *hashCreate();
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashCreateWithSize **
+
+  PROTOTYPE:
+    hash *hashCreateWithSize(u32 size);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashCreateWithSizeAndType **
+
+  PROTOTYPE:
+    hash *hashCreateWithSizeAndType(u32 size, hashType *type);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashFree **
+
+  PROTOTYPE:
+    void hashFree(hash **table);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashContainsKey **
+
+  PROTOTYPE:
+    bool hashContainsKey(hash *table, void *key);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashRemoveKey **
+
+  PROTOTYPE:
+    void hashRemoveKey(hash *table, void *key);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashSetValue **
+
+  PROTOTYPE:
+    void hashSetValue(hash *table, void *key, void *val);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashGetValue **
+
+  PROTOTYPE:
+    void *hashGetValue(hash *table, void *key);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashIterate **
+
+  PROTOTYPE:
+    void hashIterate(hash *table, hashIterator iter, void *data);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashKeys **
+
+  PROTOTYPE:
+    void **hashKeys(hash *table);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashVals **
+
+  PROTOTYPE:
+    void **hashVals(hash *table);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashKvps **
+
+  PROTOTYPE:
+    hashKvp **hashKvps(hash *table);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashClear **
+
+  PROTOTYPE:
+    void  hashClear(hash *table);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashDuplicate **
+
+  PROTOTYPE:
+    hash *hashDuplicate(hash *table);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** hashMerge **
+
+  PROTOTYPE:
+    void  hashMerge(hash *into, hash *from);
+
+  PARAMETERS:
+
+  RETURNS:
+
+  NOTES:
+
+
+--------------------------------------------------------------------------------
+Example
+--------------------------------------------------------------------------------
+
+================================================================================
+--------------------------------------------------------------------------------
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

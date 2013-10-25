@@ -1,0 +1,541 @@
+clib > string
+================================================================================
+  String containers and utilities.
+  *string*        - general purpose mutable string container.
+  *stringBuilder* - tool for batching string creation/appending.
+
+--------------------------------------------------------------------------------
+Header
+--------------------------------------------------------------------------------
+#include <clib/string.h>
+
+--------------------------------------------------------------------------------
+Structures
+--------------------------------------------------------------------------------
+** string **
+  String container.
+
+  typedef struct
+  {
+    char *data;   // string content (NOT zero terminated)
+    u32   length; // length of string data
+  } string;
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringBuilder **
+  String builder data container.
+
+  typedef struct
+  {
+    struct stringBuilderComponent *origin; // callers shouldn't need; first component
+    struct stringBuilderComponent *final;  // callers shouldn't need; final component
+    u32    length; // may be useful to callers; current total length of contents
+  } stringBuilder;
+
+--------------------------------------------------------------------------------
+String Creation/Cleanup Functions
+--------------------------------------------------------------------------------
+** stringCreate **
+  Create a (newly allocated) *string* struct
+
+  PROTOTYPE:
+    string *stringCreate();
+
+  RETURNS:
+    Newly allocated, empty, *string* struct.
+
+  NOTES:
+    > Caller should cleanup returned handle with *stringFree* when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringFromCharacter **
+  Create a (newly allocated) *string* struct, filled with specified character.
+
+  PROTOTYPE:
+    string *stringFromCharacter(char c, u32 count);
+
+  PARAMETERS:
+    char c     | character to populate string with
+    u32  count | number of times to repeat (char c)
+
+  RETURNS:
+    Newly allocated *string* struct.
+
+  NOTES:
+    > Caller should cleanup returned handle with *stringFree* when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringFromCString **
+  Create a (newly allocated) *string* struct, with a copy of the specified string.
+
+  PROTOTYPE:
+    string *stringFromCString(char *str);
+
+  PARAMETERS:
+    char *str | zero terminated c string to copy
+
+  RETURNS:
+    Newly allocated *string* struct.
+
+  NOTES:
+    > Caller should cleanup returned handle with *stringFree* when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringFromNCString **
+  Create a (newly allocated) *string* struct, with a copy of specified substring.
+
+  PROTOTYPE:
+    string *stringFromNCString(char *str, u32 length);
+
+  PARAMETERS:
+    char *str    | c string to copy from
+    u32   length | number of bytes to read from (char *str)
+
+  RETURNS:
+    Newly allocated *string* struct.
+
+  NOTES:
+    > Caller should cleanup returned handle with *stringFree* when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringDuplicate **
+  Create a (newly allocated) copy of a *string* struct.
+
+  PROTOTYPE:
+    string *stringDuplicate(string *str);
+
+  PARAMETERS:
+    string *str | *string* to copy from
+
+  RETURNS:
+    Newly allocated *string* struct.
+
+  NOTES:
+    > Caller should cleanup returned handle with *stringFree* when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringFree **
+  Free resources used by a *string* struct.
+
+  PROTOTYPE:
+    void stringFree(string **str);
+
+  PARAMETERS:
+    string **str | **str to cleanup.
+
+  NOTES:
+    > *str will be set to NULL
+
+--------------------------------------------------------------------------------
+String Appending Functions
+--------------------------------------------------------------------------------
+** stringAppendCharacter **
+  Append a character to a *string*.
+
+  PROTOTYPE:
+    void stringAppendCharacter(string *str, char c, u32 count);
+
+  PARAMETERS:
+    string *str   | *string* to append to
+    char    c     | the character to append
+    u32     count | the number of times to append the character
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringAppendCString **
+  Append a c string to a *string*.
+
+  PROTOTYPE:
+    void stringAppendCString(string *str, char *cstr);
+
+  PARAMETERS:
+    string *str  | *string* to append to
+    char   *cstr | zero terminated c string to append from
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringAppendNCString **
+  Append a partial c string to a *string*.
+
+  PROTOTYPE:
+    void stringAppendNCString(string *str, char *cstr, u32 length);
+
+  PARAMETERS:
+    string *str    | *string* to append to
+    char   *cstr   | c string to append from
+    u32     length | number of bytes to copy from cstr
+
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringAppendString **
+  Append one *string* to another.
+
+  PROTOTYPE:
+    void stringAppendString(string *into, string *from);
+
+  PARAMETERS:
+    string *into | *string* to append to
+    string *from | *string* to read from
+
+--------------------------------------------------------------------------------
+String Assigning Functions
+--------------------------------------------------------------------------------
+** stringAssignCharacter **
+  Reset *string* contents to a character.
+
+  PROTOTYPE:
+    void stringAssignCharacter(string *str, char c, u32 count);
+
+  PARAMETERS:
+    string *str   | *string* to reset
+    char    c     | character to assign from
+    u32     count | number of times to repeat (char c)
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringAssignCString **
+  Reset *string* contents to copy of a c string.
+
+  PROTOTYPE:
+    void stringAssignCString(string *str, char *cstr);
+
+  PARAMETERS:
+    string *str  | *string* to reset
+    char   *cstr | zero terminated c string to reset-to/copy-from
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringAssignNCString **
+  Reset *string* contents to partial copy of c string.
+
+  PROTOTYPE:
+    void stringAssignNCString(string *str, char *cstr, u32 length);
+
+  PARAMETERS:
+    string *str    | *string* to reset
+    char   *cstr   | c string to copy from
+    u32     length | number of bytes to copy from (char *cstr)
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringAssignString **
+  Reset one *string* to a copy of another.
+
+  PROTOTYPE:
+    void stringAssignString(string *into, string *from);
+
+  PARAMETERS:
+    string *into | *string* to reset
+    string *from | *string* to copy from
+
+--------------------------------------------------------------------------------
+Other String Functions
+--------------------------------------------------------------------------------
+** stringTrim **
+  Trim whitespace from a *string*.
+
+  PROTOTYPE:
+    void stringTrim(string *str, bool leading, bool trailing);
+
+  PARAMETERS:
+    char *str      | *string* to trim.
+    bool  leading  | if(true) remove leading whitespace
+    bool  trailing | if(true) remove trailing whitespace
+
+  NOTES:
+    > Whitespace removed includes ' ', '\t', '\r', '\n' (space,tab,CR,LF).
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringClear **
+  Clear a *string*'s contents.
+
+  PROTOTYPE:
+    void stringClear(string *str);
+
+  PARAMETERS:
+    string *str | *string* to clear/empty
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringLowerCase **
+  Convert a string to all lower case.
+
+  PROTOTYPE:
+    void stringLowerCase(string *str);
+
+  PARAMETERS:
+    string *str | *string* to convert
+
+  NOTES:
+    > Only applies where tolower() would work (ASCII).
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringUpperCase **
+  Convert a string to all upper case.
+
+  PROTOTYPE:
+    void stringUpperCase(string *str);
+
+  PARAMETERS:
+    string *str | *string* to convert
+
+  NOTES:
+    > Only applies where toupper() would work (ASCII).
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringSubstring **
+  Create a new *string* from a partial copy of a supplied *string*.
+
+  PROTOTYPE:
+    string *stringSubstring(string *str, u32 index, u32 length);
+
+  PARAMETERS:
+    string *str    | *string* to copy from
+    u32     index  | byte offset to start copying from
+    u32     length | byte length to copy
+
+  RETURNS:
+    Newly allocated *string* containing a section of (string *str)
+
+  NOTES:
+    > Caller should cleanup returned handle with *stringFree* when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringSplit **
+  Split a *string*, at occurences of provided characters, into an array of *string*s.
+
+  PROTOTYPE:
+    string **stringSplit(string *str, char *separators, u8 sepCount, u32 *tokenCount);
+
+  PARAMETERS:
+    string *str        | *string* to split
+    char   *separators | array of characters used as splitting points
+    u8      sepCount   | number of separators characters in (char *separators)
+    u32    *tokenCount | u32* to receive number of *strings* in returned array (REQUIRED)
+
+  RETURNS:
+    Newly allocated array of newly allocated *string*s, of length *tokenCount.
+
+  NOTES:
+    > Caller should cleanup each *string* in the returned array with *stringFree*;
+      then cleanup the actual array with free().
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringPrintF **
+  Reset contents of a *string* to formatted output.
+
+  PROTOTYPE:
+    void stringPrintF(string *str, u32 buffSize, const char *format, ...);
+
+  PARAMETERS:
+    string *str      | *string* to assign to
+    u32     buffSize | maximum temporary buffer size for formatting
+    char   *format   | printf-style format string
+    ...              | printf-style format arguments, for provided format
+
+  NOTES:
+    > A working buffer of AT MOST (u32 buffSize) is used to process the formatting.
+    > The resulting string can never be more than (u32 buffSize) bytes long.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringVPrintF **
+  Reset contents of a *string* to formatted output; va_list version.
+
+  PROTOTYPE:
+    void stringVPrintF(string *str, u32 buffSize, const char *format, va_list arg);
+
+  PARAMETERS:
+    see *stringPrintF*
+
+  NOTES:
+    > va_start() and va_end() are NOT called within this function.
+    see *stringPrintF*
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringToCString **
+  Create a c string from the contents of a *string*.
+
+  PROTOTYPE:
+    char *stringToCString(string *str);
+
+  PARAMETERS:
+    string *str | *string* to dump
+
+  RETURNS:
+    Newly allocated, zero terminated, c string.
+
+  NOTES:
+    > Resulting string may have zero bytes before the end, if the original *string* did.
+    > Caller responsible for free()ing returned value.
+
+--------------------------------------------------------------------------------
+String Builder Functions
+--------------------------------------------------------------------------------
+** stringBuilderCreate **
+  Create a new *stringBuilder* struct.
+
+  PROTOTYPE:
+    stringBuilder *stringBuilderCreate();
+
+  RETURNS:
+    Newly allocated *stringBuilder*
+
+  NOTES:
+    > Caller should cleanup with *stringBuilderFree* when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringBuilderFree **
+  Free resources used by a *stringBuilder* struct.
+
+  PROTOTYPE:
+    void stringBuilderFree(stringBuilder **sb);
+
+  PARAMETERS:
+    stringBuilder **sb | **stringBuilder to free
+
+  NOTES:
+    > *sb will be set to NULL
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringBuilderAppendCharacter **
+  Append a character to a *stringBuilder*.
+
+  PROTOTYPE:
+    void stringBuilderAppendCharacter(stringBuilder *sb, char c, u32 count);
+
+  PARAMETERS:
+    stringBuilder *sb    | *stringBuilder* to append to
+    char           c     | character to append
+    u32            count | number of times to repeat (char c)
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringBuilderAppendCString **
+  Append a c string to a *stringBuilder*.
+
+  PROTOTYPE:
+    void stringBuilderAppendCString(stringBuilder *sb, char *str);
+
+  PARAMETERS:
+    stringBuilder *sb  | *stringBuilder* to append to
+    char          *str | zero terminated c string to read from
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringBuilderAppendNCString **
+  Append a partial c string to a *stringBuilder*.
+
+  PROTOTYPE:
+    void stringBuilderAppendNCString(stringBuilder *sb, char *str, u32 length);
+
+  PARAMETERS:
+    stringBuilder *sb     | *stringBuilder* to append to
+    char          *str    | c string to read from
+    u32            length | number of bytes to read from (char *str)
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringBuilderAppendString **
+  Append a *string* to a *stringBuilder*.
+
+  PROTOTYPE:
+    void stringBuilderAppendString(stringBuilder *sb, string *str);
+
+  PARAMETERS:
+    stringBuilder *sb  | *stringBuilder* to append to
+    string        *str | *string* to read from
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringBuilderSeparateCString **
+  Insert a c string between each component that has been added to a *stringBuilder*.
+
+  PROTOTYPE:
+    void stringBuilderSeparateCString(stringBuilder *sb, char *between);
+
+  PARAMETERS:
+    stringBuilder *sb      | *stringBuilder* to separate
+    char          *between | zero terminated c string to insert
+
+  NOTES:
+    > (char *between) is only inserted between pairs of appended components;
+      that is, not before the origin, or after the final (abcde -> a|b|c|d|e).
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringBuilderToCString **
+  Create a c string from the total contents of a *stringBuilder*.
+
+  PROTOTYPE:
+    char *stringBuilderToCString(stringBuilder *sb);
+
+  PARAMETERS:
+    stringBuilder *sb | *stringBuilder* to collapse
+
+  RETURNS:
+    Newly allocated, zero terminatd c string.
+
+  NOTES:
+    > Caller is responsible for free()ing returned value.
+    > Returned string may contain zero bytes before the terminator, if any of the components did.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringBuilderToString **
+  Create a *string* from the total contents of a *stringBuilder*.
+
+  PROTOTYPE:
+    string *stringBuilderToString(stringBuilder *sb);
+
+  PARAMETERS:
+    stringBuilder *sb | *stringBuilder* to collapse
+
+  RETURNS:
+    Newly allocated *string*.
+
+  NOTES:
+    > Caller should cleanup returned handle with *stringFree* when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** stringBuilderPop **
+  Remove the last appended component from a *stringBuilder*.
+
+  PROTOTYPE:
+    bool stringBuilderPop(stringBuilder *sb);
+
+  PARAMETERS:
+    stringBuilder *sb | *stringBuilder* to pop from
+
+  RETURNS:
+    If a component was available to remove, true.
+    If the *stringBuilder* was already empty, false.
+
+  NOTES:
+    > If the value of the popped component is needed, it can be accessed (before popping) via stringBuilder->final.
+
+--------------------------------------------------------------------------------
+Example
+--------------------------------------------------------------------------------
+#include <stdio.h>
+#include <stdlib.h>
+#include <clib/string.h>
+
+int main(int argc, char **argv)
+{
+  // line one
+  char *lineOne = "line 1\n";
+
+  // line two, created from printf *string*
+  string *lineTwo = stringCreate();
+  stringPrintF(lineTwo, 1024, "line %d%c", 2, '\n');
+
+  // combine lines in a stringBuilder
+  stringBuilder *sb = stringBuilderCreate();
+  stringBuilderAppendCString  (sb, lineOne);
+  stringBuilderAppendString   (sb, lineTwo);
+  stringBuilderAppendCString  (sb, "line 3");
+  stringBuilderAppendCharacter(sb, '\n', 2);  // two newlines
+
+  // flatten stringBuilder to a c string, output results
+  char *combined = stringBuilderToCString(sb);
+  printf("%s", combined);
+
+  //cleanup
+  free(combined);
+  stringBuilderFree(&sb);
+  stringFree(&lineTwo);
+
+  return 0;
+}
+
+================================================================================
+--------------------------------------------------------------------------------
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

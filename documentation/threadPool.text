@@ -1,0 +1,177 @@
+clib > threadPool
+================================================================================
+  Generic pool of worker threads.
+  Creation, working, and waiting functions.
+
+--------------------------------------------------------------------------------
+Header
+--------------------------------------------------------------------------------
+#include <clib/threadPool.h>
+
+--------------------------------------------------------------------------------
+Function Prototypes
+--------------------------------------------------------------------------------
+** threadPoolFunct **
+  Function prototype for worker threads.
+  Accepts a single (void *) argument.
+
+  PROTOTYPE:
+    typedef void (*threadPoolFunct)(void *);
+
+--------------------------------------------------------------------------------
+Structures
+--------------------------------------------------------------------------------
+** threadPool **
+  Thread pool container object.
+  Most members should not be used by callers.
+
+  typedef struct
+  {
+    u32             size;      // size of pool/number of workers
+    pthread_t      *worker;    // array of worker threads
+    pthread_mutex_t mutex;     // work/load mutex
+    pthread_cond_t  condition; // work/load condition variable
+    i32             load;      // number of pending tasks
+    i32             running;   // number of workers currently processing
+    threadPoolTask *origin;    // first pending task
+    threadPoolTask *final;     // last pending task
+  } threadPool;
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** threadPoolTask_st **
+  Internal structure to store and assign work units.
+  Should not be used by callers.
+
+  typedef struct threadPoolTask_st
+  {
+    threadPoolFunct           funct; // work function
+    void                     *arg;   // work argument
+    struct threadPoolTask_st *next;  // next work unit
+  } threadPoolTask;
+
+--------------------------------------------------------------------------------
+Functions
+--------------------------------------------------------------------------------
+** threadPoolCreate **
+  Create a new *threadPool*, with the specified number of worker threads.
+
+  PROTOTYPE:
+    threadPool *threadPoolCreate(u32 size);
+
+  PARAMETERS:
+    u32 size | size of pool/number of threads
+
+  RETURNS:
+    Newly allocated threadPool.
+
+  NOTES:
+    > Caller should cleanup returned handle with *threadPoolFree* when finished.
+    > Caller should *threadPoolStop* and *threadPool* that has been *threadPoolStart*ed.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** threadPoolStart **
+  Start threadPool workers.
+
+  PROTOTYPE:
+    void threadPoolStart(threadPool *pool);
+
+  PARAMETERS:
+    threadPool *pool | *threadPool* to start
+
+  NOTES:
+    > Caller should *threadPoolStop* and *threadPool* that has been *threadPoolStart*ed.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** threadPoolAddWork **
+  Add work to a thread pool (queue).
+
+  PROTOTYPE:
+    void threadPoolAddWork(threadPool *pool, threadPoolFunct funct, void *arg);
+
+  PARAMETERS:
+    threadPool      *pool  | *threadPool* to add work to
+    threadPoolFunct  funct | work function to be performed
+    void            *arg   | data argument to provide to work function
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** threadPoolWait **
+  Wait/block until a *threadPool*'s work queue is completed.
+
+  PROTOTYPE:
+    void threadPoolWait(threadPool *pool);
+
+  PARAMETERS:
+    threadPool *pool | *threadPool* to wait for completion of
+
+  NOTES:
+    > This call blocks until both the work queue is empty, and all workers completed.
+    > This call does not stop the pool; a call to *threadPoolStop* is still required when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** threadPoolStop **
+  Stop a running *threadPool*.
+
+  PROTOTYPE:
+    void threadPoolStop(threadPool *pool, bool force, bool wait);
+
+  PARAMETERS:
+    threadPool *pool  | *threadPool* to stop
+    bool        force | if(true) abort threads non-cleanly
+                      \ if(false) let workers finish current work, but start no new work.
+    bool        wait  | if(true) wait for workers to return, if(false) return immediately
+
+  NOTES:
+    > (bool force) should not be used if you're depending on threads to do any cleanup.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** threadPoolFree **
+  Free any resources used by a *threadPool*.
+
+  PROTOTYPE:
+    void threadPoolFree(threadPool **pool);
+
+  PARAMETERS:
+    threadPool **pool | **pool to cleanup
+
+  NOTES:
+    > Started *threadPool*s should be stopped before freeing.
+    > *pool will be set to NULL.
+
+--------------------------------------------------------------------------------
+Example
+--------------------------------------------------------------------------------
+#include <stdio.h>
+#include <stdlib.h>
+#include <clib/threadPool.h>
+
+void workFunct(u32 *i)
+{
+  printf("Work Unit %u\n", *i);
+}
+
+int main(int argc, char **argv)
+{
+  u32 index[32];
+
+  // create pool, add work
+  threadPool *pool = threadPoolCreate(3);
+  for(u32 i=0; i<32; i++)
+  {
+    index[i] = i;
+    threadPoolAddWork(pool, (threadPoolFunct)workFunct, (void *)(index+i));
+  }
+
+  // start working
+  threadPoolStart(pool);
+
+  // wait for work to complete, clean up
+  threadPoolWait(pool);
+  threadPoolStop(pool, false, true);
+  threadPoolFree(&pool);
+
+  return 0;
+}
+
+================================================================================
+--------------------------------------------------------------------------------
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
