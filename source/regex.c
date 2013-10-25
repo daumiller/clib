@@ -212,7 +212,7 @@ char *regexReplace_HelpC(char *origin, char *replace, char *with)
     lenProc = len;
 
     len = strlen(working);
-    if((idx + lenRep) < len)
+    if((idx + lenRep) < (len+1))
     {
       tmpA = clstrdup(working + idx + lenRep);
       free(working);

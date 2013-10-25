@@ -133,7 +133,7 @@ static void *threadPool_Worker(void *arg)
       pthread_mutex_unlock(&(pool->mutex));
       //Do Work
       fn(arg);
-      //Decrement Running; broadcase
+      //Decrement Running; broadcast
       pthread_mutex_lock(&(pool->mutex));
       pool->running--;
       pthread_cond_broadcast(&(pool->condition));
