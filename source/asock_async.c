@@ -509,7 +509,7 @@ static void asockDisconnectComplete(void *arg)
   if(checkPollingFlags(sock, PLATFORM_HUP) == false) return;
   sock->connected = false;
   UNBUSY(sock);
-  sock->complete(sock, sock->completeData, ASOCK_STATUS_OK, NULL);  
+  sock->complete(sock, sock->completeData, ASOCK_STATUS_OK, NULL);
 }
 
 //==============================================================================
@@ -592,7 +592,7 @@ static void asockReadSomeWork(void *arg)
     if(rsd->read)
       *(rsd->read) = (u32)status;
     free(rsd);
-    UNBUSY(sock);
+    if(sock->complete != (asockComplete)asockReadUntil_Helper) { UNBUSY(sock); } //ugly special casing...
     sock->complete(sock, sock->completeData, ASOCK_STATUS_OK, NULL);
     return;
   }
@@ -687,6 +687,11 @@ static void asockReadWork(void *arg)
 //==============================================================================
 static void asockReadUntil_Helper(asock *sock, struct asockReadUntilData *rud, u32 status, char *message)
 {
+  //UNBUSY()s here:
+  //  if readSome returns TO US, and WITHOUT ERROR, the socket will not be UNBUSY()d yet.
+  //  if readSome returns TO US, and WITH ERROR, we'll alreday by UNBUSY()d (simply to avoid additional sock->complete checks in readSome)
+  // so, UNBUSY() any completion exit from an incoming ASOCK_STATUS_OK
+
   // read until disconnect
   if((status == ASOCK_STATUS_DISCONN) && (rud->untilLen == 0))
   {
@@ -745,6 +750,7 @@ static void asockReadUntil_Helper(asock *sock, struct asockReadUntilData *rud, u
       asockComplete complete = rud->complete;
       void *data = rud->data;
       free(rud);
+      UNBUSY(sock);
       complete(sock, data, ASOCK_STATUS_HITMAX, clstrdup("didn't find ReadUntil token within expected length"));
     }
     return;
@@ -775,6 +781,7 @@ static void asockReadUntil_Helper(asock *sock, struct asockReadUntilData *rud, u
         asockComplete complete = rud->complete;
         void *data = rud->data;
         free(rud);
+        UNBUSY(sock);
         complete(sock, data, ASOCK_STATUS_OK, NULL);
         return;
       }
@@ -802,6 +809,7 @@ static void asockReadUntil_Helper(asock *sock, struct asockReadUntilData *rud, u
     asockComplete complete = rud->complete;
     void *data = rud->data;
     free(rud);
+    UNBUSY(sock);
     complete(sock, data, ASOCK_STATUS_HITMAX, clstrdup("didn't find ReadUntil token within expected length"));
     return;
   }
