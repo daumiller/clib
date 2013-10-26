@@ -1,0 +1,396 @@
+clib > fileSystem
+================================================================================
+ File, Directory, and Path helpers.
+
+--------------------------------------------------------------------------------
+Header
+--------------------------------------------------------------------------------
+#include <clib/fileSystem.h>
+
+--------------------------------------------------------------------------------
+Constants
+--------------------------------------------------------------------------------
+  #define FS_DIRLIST_DEFAULT    0 // default options for *fsDirectoryList*
+                                  // -- list hidden files
+                                  // -- do not list "." and ".." entries
+                                  // -- do list subdirectories
+                                  // -- do list files
+                                  // -- list in no particular order
+  #define FS_DIRLIST_NOHIDDEN   1 // do not list hidden files
+  #define FS_DIRLIST_DOTDOT     2 // do list "." and ".." entries
+  #define FS_DIRLIST_NODIRS     4 // do not list subdirectories
+  #define FS_DIRLIST_NOFILES    8 // do not list files
+  #define FS_DIRLIST_DIRSFIRST 16 // list all directories before any files
+
+--------------------------------------------------------------------------------
+Structures
+--------------------------------------------------------------------------------
+** fsDirectoryItem **
+  Filesystem item contained in *listItem* data, in *list* returned from *fsDirectoryList*
+
+  typedef struct
+  {
+    char *name;        // name of this entry (no path)
+    bool  isDirectory; // if(true) subdirectory, if(false) a file
+  } fsDirectoryItem;
+
+--------------------------------------------------------------------------------
+Path Functions
+--------------------------------------------------------------------------------
+** fsPathExists **
+  Check if path refers to an existing file or directory.
+
+  PROTOTYPE:
+    bool fsPathExists(char *path);
+
+  PARAMETERS:
+    char *path | filesystem path to check
+
+  RETURNS:
+    If path is a valid file or directory, true.
+    Otherwise, false.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsPathIsFile **
+  Check if path refers to an existing file.
+
+  PROTOTYPE:
+    bool fsPathIsFile(char *path);
+
+  PARAMETERS:
+    char *path | filesystem path to check
+
+  RETURNS:
+    If path is a valid file, true.
+    Otherwise, false.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+**  fsPathIsDirectory **
+  Check if path refers to an existing directory.
+
+  PROTOTYPE:
+    bool fsPathIsDirectory(char *path);
+
+  PARAMETERS:
+    char *path | filesystem path to check
+
+  RETURNS:
+    If path is a valid directory, true.
+    Otherwise, false.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsPathNormalize **
+  Normalize a filesystem path to a full, absolute path.
+  Resolves '~', '.', and ".." references.
+
+  PROTOTYPE:
+    char *fsPathNormalize(char *path);
+
+  PARAMETERS:
+    char *path | path to normalize
+
+  RETURNS:
+    A newly allocated string, containing a fully resolved path.
+    Or NULL on error.
+
+  NOTES:
+    > Caller is responsible for free()ing returned c string when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsPathBase **
+  Return the base (no parents/paths) portion of a filesystem path.
+  (Returns remaining path after the last occurence of a '/' path separator.)
+
+  PROTOTYPE:
+    char *fsPathBase(char *path);
+
+  PARAMETERS:
+    char *path | path to get base of
+
+  RETURNS:
+    A newly allocated copy of the base portion of path.
+    Or NULL on error.
+
+  NOTES:
+    > Caller is responsible for free()ing returned c string when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsPathParent **
+  Return the full parent portion of a filesystem path (base name removed).
+  (Returns copy of path up to, but not including, the last occurence of a '/' path separator.)
+
+  PROTOTYPE:
+    char *fsPathParent(char *path);
+
+  PARAMETERS:
+    char *path | path to get parent of
+
+  RETURNS:
+    A newly allocated copy of the non-base portion of path.
+    Or NULL on error.
+
+  NOTES:
+    > Caller is responsible for free()ing returned c string when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsPathCurrent **
+  Get path of the current working directory.
+
+  PROTOTYPE:
+    char *fsPathCurrent();
+
+  RETURNS:
+    A newly allocated c string containing the path of the current working directory.
+
+  NOTES:
+    > Caller is responsible for free()ing returned c string when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsPathHome **
+  Get path of the user's home directory.
+
+  PROTOTYPE:
+    char *fsPathHome();
+
+  RETURNS:
+    A newly allocated c string containing the path of the current user's home directory.
+
+  NOTES:
+    > Caller is responsible for free()ing returned c string when finished.
+
+--------------------------------------------------------------------------------
+Directory Functions
+--------------------------------------------------------------------------------
+** fsDirectoryCreate **
+  Create a directory (and any needed intermediate directories).
+
+  PROTOTYPE:
+    bool fsDirectoryCreate(char *path, i32 *status, char **message);
+
+  PARAMETERS:
+    char *path     | path of directory to create
+    i32  *status   | i32* to receive error code, or NULL (OPTIONAL)
+    char **message | char** to receive error message, or NULL (OPTIONAL)
+
+  RETURNS:
+    If successful, true.
+    If not-successful, false; with error information in *status and *message.
+
+  NOTES:
+    > This is a recursive function; it will attempt to create intermediate dirs.
+    > If directory already exists, true is returned.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsDirectoryDelete **
+  Delete a directory (and recursively, all of its contents)
+
+  PROTOTYPE:
+    bool fsDirectoryDelete(char *path, i32 *status, char **message);
+
+  PARAMETERS:
+    char *path     | path of directory to delete
+    i32  *status   | i32* to receive error code, or NULL (OPTIONAL)
+    char **message | char** to receive error message, or NULL (OPTIONAL)
+
+  RETURNS:
+    If successful, true.
+    If not-successful, false; with error information in *status and *message.
+
+  NOTES:
+    > This is a recursive function; it will attempt to delete all contents of the dir.
+    > If directory does not already exist, false is returned.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsDirectoryMove **
+  Move a directory to a new location (with all contents).
+
+  PROTOTYPE:
+    bool fsDirectoryMove(char *pathOld, char *pathNew, i32 *status, char **message);
+
+  PARAMETERS:
+    char *pathOld | current path if directory to move
+    char *pathNew | desired new path for directory
+    i32  *status   | i32* to receive error code, or NULL (OPTIONAL)
+    char **message | char** to receive error message, or NULL (OPTIONAL)
+
+  RETURNS:
+    If successful, true.
+    If not-successful, false; with error information in *status and *message.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsDirectoryList **
+  Create a *list* from the (immediate) contents of a directory.
+  (Not a recursive/tree listing.)
+
+  PROTOTYPE:
+    list *fsDirectoryList(char *path, int flags, regex *filter);
+
+  PARAMETERS:
+    char *path    | path of directory to list
+    int   flags   | options for listing; use FS_DIRLIST_* constants
+    regex *filter | regular expression to test item names against, or NULL (OPTIONAL)
+
+  RETURNS:
+    Newly create *list* containg listing of directory in *fsDirectorItem* structs.
+    Or NULL on error.
+
+  NOTES:
+    > If optional (regex *filter) is provided, all items' base names are tested
+    \ for match agains filter before adding to list.
+    > Caller should cleanup returned handle with *listFree* when finished.
+
+--------------------------------------------------------------------------------
+File Functions
+--------------------------------------------------------------------------------
+** fsFileCreate **
+  Create a new (, or truncate an existing) file.
+
+  PROTOTYPE:
+    bool fsFileCreate(char *path, i32 *status, char **message);
+
+  PARAMETERS:
+    char *path     | path of file to create
+    i32  *status   | i32* to receive error code, or NULL (OPTIONAL)
+    char **message | char** to receive error message, or NULL (OPTIONAL)
+
+  RETURNS:
+    If successful, true.
+    If not-successful, false; with error information in *status and *message.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsFileDelete **
+  Delete an existing file.
+
+  PROTOTYPE:
+    bool fsFileDelete(char *path, i32 *status, char **message);
+
+  PARAMETERS:
+    i32  *status   | i32* to receive error code, or NULL (OPTIONAL)
+    char **message | char** to receive error message, or NULL (OPTIONAL)
+
+  RETURNS:
+    If successful, true.
+    If not-successful, false; with error information in *status and *message.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsFileMove **
+  Move an existing file to a new location.
+
+  PROTOTYPE:
+    bool fsFileMove(char *pathOld, char *pathNew, i32 *status, char **message);
+
+  PARAMETERS:
+    char *pathOld  | existing file path
+    char *pathNew  | desired new path for file
+    i32  *status   | i32* to receive error code, or NULL (OPTIONAL)
+    char **message | char** to receive error message, or NULL (OPTIONAL)
+
+  RETURNS:
+    If successful, true.
+    If not-successful, false; with error information in *status and *message.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsFileSize **
+  Get the size of a file.
+
+  PROTOTYPE:
+    u64 fsFileSize(char *path);
+
+  PARAMETERS:
+    char *path | file to get size of
+
+  RETURNS:
+    On success, u64 size of file.
+    On failure, 0.
+
+  NOTES:
+    > If you need to differentiate between non-existant files and zero-sized files,
+    \ use an *fsFileExists* call.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsFileRead **
+  Read the entire contents of a file into a newly allocated array.
+
+  PROTOTYPE:
+    char *fsFileRead(char *path, i32 *status, char **message);
+
+  PARAMETERS:
+    char *path     | path of file to read
+    i32  *status   | i32* to receive error code, or NULL (OPTIONAL)
+    char **message | char** to receive error message, or NULL (OPTIONAL)
+
+  RETURNS:
+    If successful, newly allocated array containing entire contents of file.
+    If not-successful, NULL; with error information in *status and *message.
+
+  NOTES:
+    > Caller is responsible for free()ing the returned array when finished.
+    > May want to do a *fsFileSize* check before calling.
+    > Currently, relying on *fsFileSize* to get length; maybe it should be a u32* parameter?
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** fsFileWrite **
+  Create (or reset) a file with the specified contents.
+
+  PROTOTYPE:
+    bool fsFileWrite(char *path, void *content, u32 size, i32 *status, char **message);
+
+  PARAMETERS:
+    char *path     | path of the file to write
+    void *content  | data to write to the file
+    u32   size     | size of the data to write
+    i32  *status   | i32* to receive error code, or NULL (OPTIONAL)
+    char **message | char** to receive error message, or NULL (OPTIONAL)
+
+  RETURNS:
+    If successful, true.
+    If not-successful, false; with error information in *status and *message.
+
+  NOTES:
+    > Existing files will be overwrote without warning.
+
+--------------------------------------------------------------------------------
+Example
+--------------------------------------------------------------------------------
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <clib/fileSystem.h>
+
+int main(int argc, char **argv)
+{
+  // our test file path
+  char *testFile = fsPathNormalize("./clibFsTest");
+  char *contW = "Hello fileSystem World!";
+
+  // if this file already exists, delete it
+  // (not worrying about success here)
+  fsFileDelete(testFile, NULL, NULL);
+
+  // create a file with our test content
+  printf("Writing file %s\n", testFile);
+  fsFileWrite(testFile, contW, strlen(contW), NULL, NULL);
+
+  // make sure the file now exists
+  if(fsPathIsFile(testFile))
+    printf("File wrote okay.\n");
+  else
+    printf("Error writing file...\n");
+
+  //delete the file
+  fsFileDelete(testFile, NULL, NULL);
+
+  // verify deletion occured
+  if(fsPathIsFile(testFile))
+    printf("Error deleting file...\n");
+  else
+    printf("File deleted okay.\n");
+
+  // cleanup our path
+  free(testFile);
+  return 0;
+}
+
+================================================================================
+--------------------------------------------------------------------------------
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

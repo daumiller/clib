@@ -1,0 +1,485 @@
+clib > asock
+================================================================================
+  Asynchronous sockets and work manager.
+  Currently fixed with TCP/IP mode.
+
+--------------------------------------------------------------------------------
+Header
+--------------------------------------------------------------------------------
+#include <clib/asock.h>
+
+--------------------------------------------------------------------------------
+Constants
+--------------------------------------------------------------------------------
+  #define ASOCK_STATUS_OK      0x0000 // asock operation completed okay
+  #define ASOCK_STATUS_OKAY    0x0000 // asock operation completed okay
+  #define ASOCK_STATUS_BUSY    0x0001 // asock operation already in-progress
+  #define ASOCK_STATUS_TIMEOUT 0x0002 // asock operation timed out
+  #define ASOCK_STATUS_DISCONN 0x0003 // disconnected (already)
+  #define ASOCK_STATUS_CONN    0x0004 // connected (already)
+  #define ASOCK_STATUS_BADHOST 0x0005 // unable to resolve/route host
+  #define ASOCK_STATUS_HITMAX  0x0006 // read maximum amount of data in an until
+  #define ASOCK_STATUS_FAILED  0xFFFF // other/general failure
+
+--------------------------------------------------------------------------------
+Function Prototypes
+--------------------------------------------------------------------------------
+** asockComplete **
+  Callback function provided to asynchronous socket operations.
+
+  PROTOTYPE:
+    typedef void (*asockComplete)(void *sock, void *data, u32 status, char *message);
+
+  PARAMETERS:
+    void *sock    | (asock *sock) that operation completed on
+    void *data    | user data provided when starting operation
+    u32   status  | completion status code (one of ASOCK_STATUS_* constants)
+    char *message | description of error (which must be free()ed), or NULL
+
+  NOTES:
+    > If your completion handler is provided a (char *message) of non-NULL,
+    \ it is responsible for free()ing that error message when finished.
+    \ (this message is always provided from the heap, to allow more flexibility.)
+
+--------------------------------------------------------------------------------
+Structures
+--------------------------------------------------------------------------------
+** asock **
+  Asynchronous socket data container.
+  Callers should not modify any members (and likely not much use from reading them).
+
+  typedef struct
+  {
+    int             fd;            // socket file descriptor
+    u32             timeout;       // absolute timeout value in milliseconds
+    u8             *readBuff;      // partial read buffer (for use in ReadUntil)
+    u32             readBuffLen;   // length of partial read buffer
+    asockComplete   complete;      // pending completion operation
+    void           *completeData;  // user data to pass to completion operation
+    void           *workOp;        // pending work operation
+    asockWorker    *worker;        // *asockWorker* owner
+    bool            connected;     // currently connected? (not reliable without mutex lock)
+    bool            busy;          // currently busy? (not reliable without mutex lock)
+    pthread_mutex_t mutex;         // busy/working mutex
+    int             workOpEvents;  // extra work data; event polling results flags
+    u32             workOpPartial; // extra work data; partial amount of data processed
+    u32             workOpNumber;  // extra work data; arbitrary number/total data to process
+    u64             workOpTimeout; // extra work data; remainder of total timeout interval
+    void           *workOpExtra;   // extra work data; generic data
+  #ifdef __linux__
+    int             fdTimeout;     // linux only, file descriptor for timeout timerfd
+  #endif
+  } asock;
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockWorker **
+  Asynchronous socket manager/worker pool.
+  Callers should not modify any members (and likely won't find them useful).
+  An *asockWorker* is required for *asock*s to run.
+
+  typedef struct
+  {
+    pthread_t       thPoll;         // polling (epoll/kqueue) thread
+    threadPool     *pool;           // threadPool of workers
+    u32             sockCount;      // number of sockets currently registered
+    pthread_mutex_t sockCountMutex; // socket count mutex
+    pthread_cond_t  sockCountCond;  // socket count condition variable
+    int             fdPoll;         // polling file descriptor
+    int             fdPollAbort;    // polling abortion file descriptor
+  } asockWorker;
+
+--------------------------------------------------------------------------------
+Socket Functions
+--------------------------------------------------------------------------------
+** asockCreate **
+  Create a new *asock*.
+
+  PROTOTYPE:
+    asock *asockCreate(asockWorker *worker, u32 timeout);
+
+  PARAMETERS:
+    asockWorker *worker  | *asockWorker* to manage socket work
+    u32          timeout | default socket timeout value (in milliseconds)
+
+  RETURNS:
+    Newly allocated *asock*.
+
+  NOTES:
+    > Callers should cleanup returned handle with *asockFree* when finished.
+    > An *asock* is fixed to the *asockWorker* it was created with.
+    > The default timeout can later be altered with an *asockSetTimeout* call.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockFree **
+  Free resources used by an *asock* socket.
+
+  PROTOTYPE:
+    void asockFree(asock **sock);
+
+  PARAMETERS:
+    asock **sock | *asock* to cleanup
+
+  NOTES:
+    > *sock will be set to NULL.
+    > If connected/listening, an *asock* should be *asockDisconnect*ed before freeing.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockIsBusy **
+  Check if the *asock* is currently busy (pending some previously initiated operation).
+
+  PROTOTYPE:
+    bool asockIsBusy(asock *sock);
+
+  PARAMETERS:
+    asock *sock | *asock* to check
+
+  RETURNS:
+    If non-busy, true.
+    If busy, or error, false.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockSetTimeout **
+  Change timeout value for *asock*.
+
+  PROTOTYPE:
+    bool asockSetTimeout(asock *sock, u32 timeout);
+
+  PARAMETERS:
+    asock *sock    | *asock* to change timeout of
+    u32    timeout | new timeout value (in milliseconds)
+
+  RETURNS:
+    If successfully changed, true.
+    On error, false.
+
+  NOTES:
+    > Will fail if *asock* is busy.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockBind **
+  Bind *asock* socket to local host/ip and port.
+
+  PROTOTYPE:
+    bool asockBind(asock *sock, char *ip, u16 port, u32 *errn, char **errs);
+
+  PARAMETERS:
+    asock *sock | *asock* to bind
+    char  *ip   | hostname or ip to bind to
+    u16    port | port to bind to
+    u32   *errn | u32 to receive error code, or NULL (OPTIONAL)
+    char **errs | char* to receive error message, or NULL (OPTIONAL)
+
+  RETURNS:
+    On success, true.
+    On error, false; with additional information in *errn and *errs.
+
+  NOTES:
+    > On error, if errs was provided,
+    \ caller is responsible for free()ing error message string.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockListen **
+  Start listening for connections on *asock* socket.
+
+  PROTOTYPE:
+    bool asockListen(asock *sock, u32 *errn, char **errs);
+
+  PARAMETERS:
+    asock *sock | *asock* to listen on
+    u32   *errn | u32 to receive error code, or NULL (OPTIONAL)
+    char **errs | char* to receive error message, or NULL (OPTIONAL)
+
+  RETURNS:
+    On success, true.
+    On error, false; with additional information in *errn and *errs.
+
+  NOTES:
+    > Socket should be bound (with *asockBind*) before starting a listen.
+    > On error, if errs was provided,
+    \ caller is responsible for free()ing error message string.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockAccept **
+  Accept a connection from a listening *asock*.
+
+  PROTOTYPE:
+    void asockAccept(asock *sock, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock         *sock     | listening *asock* to accept from
+    asockComplete  complete | completion callback function
+    void          *data     | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+  NOTES:
+    > Socket should be bound and listening for trying to accept connections.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockConnect **
+  Connect *asock* socket to a remote host.
+
+  PROTOTYPE:
+    void asockConnect(asock *sock, char *host, u16 port, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock         *sock     | *asock* to connect
+    char          *host     | hostname or ip
+    u16            port     | host port
+    asockComplete  complete | completion callback function
+    void          *data     | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockReadSome **
+  Read some data from an *asock*.
+
+  PROTOTYPE:
+    void asockReadSome(asock *sock, void *buff, u32 max, u32 *read, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock         *sock     | *asock* to read from
+    void          *buff     | buffer to read into (caller pre-allocated)
+    u32            max      | maximum amount of data to read (REQUIRED non-zero)
+    u32           *read     | length of data actually read, or NULL (OPTIONAL but RECOMMENDED)
+    asockComplete  complete | completion callback function
+    void          *data     | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockRead **
+  Read data from an *asock*.
+
+  PROTOTYPE:
+    void asockRead(asock *sock, void *buff, u32 length, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock         *sock     | *asock* to read from
+    void          *buff     | buffer to read into (caller pre-allocated)
+    u32            length   | amount of data to read (exactly; will wait for full amount)
+    asockComplete  complete | completion callback function
+    void          *data     | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+  NOTES:
+    > Will not complete until (u32 length) amount of data is read, or operation times out.
+    > The *asock*'s timeout value is applied to this operation as one whole;
+    \ for large amounts of data, either read in small chunks or set a longer timeout;
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockReadUntil **
+  Read data from an *asock* until a specific sequence of bytes is encountered.
+  Or, read until peer disconnects, if untilLen is passes as 0.
+
+  PROTOTYPE:
+    void asockReadUntil(asock *sock, void **recv, u32 max, u32 *read,
+                        void *until, u8 untilLen, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock         *sock     | *asock* to read from
+    void         **recv     | void* that will receive pointer to total read data (REQUIRED non-NULL)
+    u32            max      | maximum amount of data to read (REQUIRED non-zero)
+    u32           *read     | length of data actually read, or NULL (OPTIONAL but RECOMMENDED)
+    void          *until    | data array to match against, or NULL when untilLen is 0
+    u8             untilLen | length of data to match against, or NULL to read until disconnect
+    asockComplete  complete | completion callback function
+    void          *data     | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+  NOTES:
+    > The *asock*'s timeout value is applied to this operation as one whole;
+    \ consider timeout values when calling.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockWrite **
+  Write data to an *asock*.
+
+  PROTOTYPE:
+    void asockWrite(asock *sock, void *buff, u32 length, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock         *sock     | *asock* to write to
+    void          *buff     | buffer to write from (caller managed)
+    u32            length   | amount of data to write (exactly; will wait for full amount)
+    asockComplete  complete | completion callback function
+    void          *data     | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+  NOTES:
+    > Will not complete until (u32 length) amount of data is wrote, or operation times out.
+    > The *asock*'s timeout value is applied to this operation as one whole;
+    \ for large amounts of data, either write in small chunks or set a longer timeout.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockDisconnect **
+  Disconnect an *asock*.
+
+  PROTOTYPE:
+    void asockDisconnect(asock *sock, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock         *sock     | *asock* to disconnect
+    asockComplete  complete | completion callback function
+    void          *data     | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+--------------------------------------------------------------------------------
+Worker Functions
+--------------------------------------------------------------------------------
+** asockWorkerCreate **
+  Create a new *asockWorker*, for management of *asock* sockets.
+
+  PROTOTYPE:
+    asockWorker *asockWorkerCreate(u32 workers);
+
+  PARAMETERS:
+    u32 workers | number of worker threads to create
+
+  RETURNS:
+    Newly allocated *asockWorker*.
+
+  NOTES:
+    > Caller should cleanup returned handle with *asockWorkerFree* when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockWorkerFree **
+  Free resources used by an *asockWorker*.
+
+  PROTOTYPE:
+    void asockWorkerFree(asockWorker **worker);
+
+  PARAMETERS:
+    asockWorker **worker | *asockWorker* to cleanup
+
+  NOTES:
+    > *worker will be set to NULL.
+    > A started *asockWorker* should be *asockWorkerStop*ped before freeing.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockWorkerStart **
+  Start worker threads on an *asockWorker*.
+
+  PROTOTYPE:
+    void asockWorkerStart(asockWorker *worker);
+
+  PARAMETERS:
+    asockWorker *worker | *asockWorker* to start
+
+  NOTES:
+    > No *asock* work will run until the *asockWorker* is started.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockWorkerWait **
+  Wait/block for all *asock* sockets to complete working.
+
+  PROTOTYPE:
+    void asockWorkerWait(asockWorker *worker);
+
+  PARAMETERS:
+    asockWorker *worker | *asockWorker* to wait for
+
+  NOTES:
+    > Call blocks until all *asock*s have been *asockFree*ed.
+    > Also waits for its owned *threadPoolWait*, though that should be empty when sockets are.
+    > This call does NOT stop the *asockWorker*, only waits for it to be empty.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockWorkerStop **
+  Stop a running *asockWorker*.
+
+  PROTOTYPE:
+    void asockWorkerStop(asockWorker *worker, bool force, bool wait);
+
+  PARAMETERS:
+    asockWorker *worker | *asockWorker* to wait stop
+    bool         force  | if(true) cancel polling and worker threads non-cleanly
+                        \ if(false) (attempt to) let threads exit cleanly,
+                        \ (finishing current work, accepting no new)
+    bool         wait   | if(true) wait for threads to return, if(false) return immediately
+
+  NOTES:
+    > All startd *asockWorker*s should be stopped before cleaning up.
+    > (bool force) should not be used if you're depending on workers to do cleanup.
+
+--------------------------------------------------------------------------------
+Example
+--------------------------------------------------------------------------------
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <clib/asock.h>
+
+void  sockTask(asock *sock, void *data, u32 status, char *message);
+char *sockTaskQuery   = "GET / HTTP/1.0\r\n\r\n";
+void *sockTaskRead    = NULL;
+u32   sockTaskReadLen = 0;
+
+int main(int argc, char **argv)
+{
+  asockWorker *worker = asockWorkerCreate(1);
+  asock *sock = asockCreate(worker, 12000);
+
+  asockWorkerStart(worker);
+  asockConnect(sock, "icanhazip.com", 80, (asockComplete)sockTask, (void *)(intptr_t)0);
+
+  asockWorkerWait(worker);
+  asockWorkerStop(worker, false, true);
+  asockWorkerFree(&worker);
+
+  return 0;
+}
+
+void sockTask(asock *sock, void *data, u32 status, char *message)
+{
+  u32 stage = (u32)((intptr_t)data);
+  printf("sockTask stage: %u\n", stage);
+
+  if(status != ASOCK_STATUS_OKAY)
+  {
+    printf("sockTask error - (%u) \"%s\".\n", status, message);
+    if(message) free(message);
+    asockFree(&sock);
+    return;
+  }
+
+  switch(stage++)
+  {
+    case 0: // Connected, Write Query
+      asockWrite(sock, sockTaskQuery, strlen(sockTaskQuery), (asockComplete)sockTask, (void *)(intptr_t)stage);
+      break;
+
+    case 1: // Queried, Read All Headers
+      asockReadUntil(sock, &sockTaskRead, 131072, &sockTaskReadLen, "\r\n\r\n",4, (asockComplete)sockTask, (void *)(intptr_t)stage);
+      break;
+
+    case 2: // Skipped Headers, Read Our Content
+      free(sockTaskRead);
+      asockReadUntil(sock, &sockTaskRead, 131072, &sockTaskReadLen, NULL,0, (asockComplete)sockTask, (void *)(intptr_t)stage);
+      break;
+
+    case 3: // Read Content, Finish Up
+      //luckily, a CRLF follows the ip address here, otherwise we'd need a realloc to append a terminator
+      ((char *)sockTaskRead)[sockTaskReadLen-1] = 0x00;
+      printf("External IP: \"%s\"\n", (char *)sockTaskRead);
+      free(sockTaskRead);
+      asockFree(&sock);
+      return;
+  }
+}
+
+================================================================================
+--------------------------------------------------------------------------------
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

@@ -50,6 +50,7 @@ void *listIndexAt(list *lst, u32 index);
 listItem *listIndexAtItem(list *lst, u32 index);
 u32 listIndexOf(list *lst, void *data, bool exact);
 u32 listIndexOfItem(list *lst, listItem *item);
+listItem *listItemWithData(list *lst, void *data, bool exact);
 void listIterate(list *lst, listIterator iterator, void *data);
 list *listDuplicate(list *lst);
 void **listToArray(list *lst, u32 *count);

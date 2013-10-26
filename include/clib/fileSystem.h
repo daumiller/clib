@@ -7,15 +7,12 @@
 #include <clib/list.h>
 #include <clib/regex.h>
 //==============================================================================
-typedef enum
-{
-  FS_DIRLIST_DEFAULT   =  0,
-  FS_DIRLIST_NOHIDDEN  =  1,
-  FS_DIRLIST_DOTDOT    =  2,
-  FS_DIRLIST_NODIRS    =  4,
-  FS_DIRLIST_NOFILES   =  8,
-  FS_DIRLIST_DIRSFIRST = 16
-} FS_DIRLIST_FLAGS;
+#define FS_DIRLIST_DEFAULT    0
+#define FS_DIRLIST_NOHIDDEN   1
+#define FS_DIRLIST_DOTDOT     2
+#define FS_DIRLIST_NODIRS     4
+#define FS_DIRLIST_NOFILES    8
+#define FS_DIRLIST_DIRSFIRST 16
 //==============================================================================
 
 bool fsPathExists     (char *path);

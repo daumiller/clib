@@ -1,6 +1,6 @@
 clib > hash
 ================================================================================
-  Hashed key associative array.
+  Hash table / hashed key associative array.
   Quick lookups, dynamic object models, other fun things.
 
 --------------------------------------------------------------------------------
@@ -15,10 +15,23 @@ Function Prototypes
   Prototypes used by the *hashType* structure.
 
   typedef u32  (*hashFunct)(void *key);
+  // actual hashing function; returns the hash of key as a u32
+
   typedef i32  (*hashKeyCompare)(void *keyA, void *keyB);
+  // key comparison function; returns 0 for a (n exact) match
+
   typedef void (*hashKvpInsert)(hashKvp *kvp, void *key, void *val);
+  // KVP insertion function; assign the given (key,val) to (kvp->key,kvp->val).
+  // (with either direct assignment, or any memory management needed)
+
   typedef void (*hashKvpAssign)(hashKvp *kvp, void *val);
+  // KVP assign function; assign a new value to a kvp->val
+  // (also perform any needed cleanup of the existing kvp->val)
+
   typedef void (*hashKvpFree)(hashKvp *kvp);
+  // KVP cleanup function; for removing a key, or *hashFree*ing a whole table
+  // cleanup any used resources used by kvp->key or kvp->val
+  // (all other cleanup is handled internally)
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashIterator **
@@ -76,188 +89,272 @@ Structures
 Functions
 --------------------------------------------------------------------------------
 ** hashCreate **
+  Create a new hash table.
 
   PROTOTYPE:
     hash *hashCreate();
 
-  PARAMETERS:
-
   RETURNS:
+    Newly allocated, emtpy *hash* table.
 
   NOTES:
+    > Caller should cleanup returned handle with *hashFree* when finished.
+    > The default *hashType* treats keys as zero terminated c strings.
+    > The default *hashType* treats values as (void *)s.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashCreateWithSize **
+  Create a new hash table, with an initial slot/bucket size.
 
   PROTOTYPE:
     hash *hashCreateWithSize(u32 size);
 
   PARAMETERS:
+    u32 size | initial size
 
   RETURNS:
+    Newly allocated, empty *hash* table.
 
   NOTES:
+    > Caller should cleanup returned handle with *hashFree* when finished.
+    > The default *hashType* treats keys as zero terminated c strings.
+    > The default *hashType* treats values as (void *)s.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashCreateWithSizeAndType **
+  Create a new hash table, with intitial size and type.
 
   PROTOTYPE:
     hash *hashCreateWithSizeAndType(u32 size, hashType *type);
 
   PARAMETERS:
+    u32 size       | initial size
+    hashType *type | type of hash to create / hash management functions to use
 
   RETURNS:
+    Newly allocated, empty *hash* table.
 
   NOTES:
+    > Caller should cleanup returned handle with *hashFree* when finished.
+    > All hashType members are required to be populated.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashFree **
+  Free resources used by a *hash* table.
 
   PROTOTYPE:
     void hashFree(hash **table);
 
   PARAMETERS:
-
-  RETURNS:
+    hash **table | *hash* to cleanup
 
   NOTES:
+    > *table will be set to NULL.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashContainsKey **
+  Test if hash contains specified key.
 
   PROTOTYPE:
     bool hashContainsKey(hash *table, void *key);
 
   PARAMETERS:
+    hash *table | *hash* table to test against
+    void *key   | key to look for
 
   RETURNS:
-
-  NOTES:
+    If key is in hash, true; otherwise, false.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashRemoveKey **
+  Remove a key (and it's value) from the *hash* table.
 
   PROTOTYPE:
     void hashRemoveKey(hash *table, void *key);
 
   PARAMETERS:
-
-  RETURNS:
+    hash *table | *hash* table to remove key-value-pair from
+    void *key   | key for removal
 
   NOTES:
+    > It is okay to call this for keys that aren't in the table (no need to test before calling).
+    > Any resources used by the removed KVP will be cleaned up by the table's *hashType* functions.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashSetValue **
+  Set/reset *hash* table's key value pair.
 
   PROTOTYPE:
     void hashSetValue(hash *table, void *key, void *val);
 
   PARAMETERS:
-
-  RETURNS:
+    hash *table | *hash* table
+    void *key   | key to set
+    void *val   | value to set
 
   NOTES:
+    > Non-existant keys will be inserted, pre-existing KVPs will be overwrote.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashGetValue **
+  Get a key's associated value from a *hash* table.
 
   PROTOTYPE:
     void *hashGetValue(hash *table, void *key);
 
   PARAMETERS:
+    hash *table | *hash* table to read from
+    void *key   | key to get value for
 
   RETURNS:
+    If found, value from KVP; otherwise, NULL.
 
   NOTES:
+    > If you need to differentiate between a missing KVP and an assigned NULL value,
+      use in combination with *hashContainsKey*.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashIterate **
+  Iterate over all key value pairs in a *hash* table.
 
   PROTOTYPE:
     void hashIterate(hash *table, hashIterator iter, void *data);
 
   PARAMETERS:
-
-  RETURNS:
+    hash         *table | *hash* table to iterate
+    hashIterator  iter  | iteration function to call for each KVP
+    void         *data  | extra/user data to pass to iteration function
 
   NOTES:
+    > *hashIterator* should return true to conintue processing, and false to stop.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashKeys **
+  Create an array of all keys in the *hash* table.
 
   PROTOTYPE:
     void **hashKeys(hash *table);
 
   PARAMETERS:
+    hash *table | *hash* table to get keys from
 
   RETURNS:
+    A newly allocated (void **) array of all keys in the table.
 
   NOTES:
+    > *hash*->entries can be used to determine the size of the returned array.
+    > Caller is responsible for free()ing the returned array when finished.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashVals **
+  Create an array of all values in the *hash* table.
 
   PROTOTYPE:
     void **hashVals(hash *table);
 
   PARAMETERS:
+    hash *table | *hash* table to get keys from
 
   RETURNS:
+    A newly allocated (void **) array of all values in the table.
 
   NOTES:
+    > *hash*->entries can be used to determine the size of the returned array.
+    > Caller is responsible for free()ing the returned array when finished.
+    
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashKvps **
+  Create an array of all key value pairs in the *hash* table.
 
   PROTOTYPE:
     hashKvp **hashKvps(hash *table);
 
   PARAMETERS:
+    hash *table | *hash* table to get KPVs from
 
   RETURNS:
+    Newly allocated (hashKvp **) array of all KVPS in the the table.
 
   NOTES:
+    > *hash*->entries can be used to determine the size of the returned array.
+    > Following *hashKvp*->next will NOT traverse the array.
+    > Returned KVPs are references to (not copies of) actual table data.
+    > No member values in the returned KVPs should be modified.
+    > Caller is responsible for free()ing the returned array when finished
+    \ (but not its individual elements).
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashClear **
+  Clear/reset/empty a *hash* table.
 
   PROTOTYPE:
     void  hashClear(hash *table);
 
   PARAMETERS:
-
-  RETURNS:
+    hash *table | *hash* table to clear
 
   NOTES:
+    > This function will NOT shrink/resize the table,
+    \ though any following *hashRemoveKey*, of an added key, may.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashDuplicate **
+  Create a duplicate copy of a *hash* table.
 
   PROTOTYPE:
     hash *hashDuplicate(hash *table);
 
   PARAMETERS:
+    hash *table | table to duplicate from
 
   RETURNS:
+    Newly allocated *hash* table, with a full copy of KVPs.
 
   NOTES:
+    > Caller should cleanup returned handle with *hashFree* when finished.
+    > Any KVP resource data copies are handled by (hash *table)'s *hashType*->kvpInsert function.
+    > If using a non-default *hashType*, ensure kvpInsert and kvpFree don't result in leaks or double-free()s.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** hashMerge **
+  Merge one *hash* table's set of KVPs into another *hash* table.
 
   PROTOTYPE:
-    void  hashMerge(hash *into, hash *from);
+    void hashMerge(hash *into, hash *from);
 
   PARAMETERS:
-
-  RETURNS:
+    hash *into | hash that will be recieving new KVPs (as well as retaining its own)
+    hash *from | hash to copy KVPs from (will remain unmodified)
 
   NOTES:
-
+    > Any keys existing in both tables will be reassigned to the value in the (hash *from) table.
+    > Both tables will still need to be *hashFree*d when finished ("from" is not cleanup up here).
 
 --------------------------------------------------------------------------------
 Example
 --------------------------------------------------------------------------------
+#include <stdio.h>
+#include <clib/hash.h>
+
+int main(int argc, char **argv)
+{
+  hash *table = hashCreate();
+
+  // store some values
+  hashSetValue(table, "blue"  , "ff0000ff");
+  hashSetValue(table, "violet", "ffff00ff");
+  hashSetValue(table, "cyan"  , "ff00ffff");
+
+  // retreive values
+  printf("blue   : %s\n", (char *)hashGetValue(table, "blue"  ));
+  printf("violet : %s\n", (char *)hashGetValue(table, "violet"));
+  printf("cyan   : %s\n", (char *)hashGetValue(table, "cyan"  ));
+
+  // cleanup
+  hashFree(&table);
+  return 0;
+}
 
 ================================================================================
 --------------------------------------------------------------------------------

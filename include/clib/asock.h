@@ -7,25 +7,22 @@
 #include <clib/types.h>
 #include <clib/threadPool.h>
 //==============================================================================
-
-typedef enum
-{
-  ASOCK_STATUS_OK      = 0x0000, // okay
-  ASOCK_STATUS_OKAY    = 0x0000, // okay
-  ASOCK_STATUS_BUSY    = 0x0001, // asock operation in-progress
-  ASOCK_STATUS_TIMEOUT = 0x0002, // timed out
-  ASOCK_STATUS_DISCONN = 0x0003, // disconnected (already)
-  ASOCK_STATUS_CONN    = 0x0004, // connected (already)
-  ASOCK_STATUS_BADHOST = 0x0005, // unable to resolve/route
-  ASOCK_STATUS_FAILED  = 0xFFFF  // other/general failure
-} asockStatus;
+#define ASOCK_STATUS_OK      0x0000 // okay
+#define ASOCK_STATUS_OKAY    0x0000 // okay
+#define ASOCK_STATUS_BUSY    0x0001 // asock operation in-progress
+#define ASOCK_STATUS_TIMEOUT 0x0002 // timed out
+#define ASOCK_STATUS_DISCONN 0x0003 // disconnected (already)
+#define ASOCK_STATUS_CONN    0x0004 // connected (already)
+#define ASOCK_STATUS_BADHOST 0x0005 // unable to resolve/route
+#define ASOCK_STATUS_HITMAX  0x0006 // read maximum amount of data in an until
+#define ASOCK_STATUS_FAILED  0xFFFF // other/general failure
 
 typedef void (*asockComplete)(void *sock, void *data, u32 status, char *message);
 
 typedef struct
 {
-  pthread_t  thPoll;
-  threadPool *pool;
+  pthread_t       thPoll;
+  threadPool     *pool;
   u32             sockCount;
   pthread_mutex_t sockCountMutex;
   pthread_cond_t  sockCountCond;
@@ -37,6 +34,8 @@ typedef struct
 {
   int             fd;
   u32             timeout;
+  u8             *readBuff;
+  u32             readBuffLen;
   asockComplete   complete;
   void           *completeData;
   void           *workOp;
@@ -61,8 +60,9 @@ bool asockBind(asock *sock, char *ip, u16 port, u32 *errn, char **errs);
 bool asockListen(asock *sock, u32 *errn, char **errs);
 void asockAccept(asock *sock, asockComplete complete, void *data);
 void asockConnect(asock *sock, char *host, u16 port, asockComplete complete, void *data);
-void asockReadSome(asock *sock, void *buff, u32 max, asockComplete complete, void *data);
+void asockReadSome(asock *sock, void *buff, u32 max, u32 *read, asockComplete complete, void *data);
 void asockRead(asock *sock, void *buff, u32 length, asockComplete complete, void *data);
+void asockReadUntil(asock *sock, void **recv, u32 max, u32 *read, void *until, u8 untilLen, asockComplete complete, void *data);
 void asockWrite(asock *sock, void *buff, u32 length, asockComplete complete, void *data);
 void asockDisconnect(asock *sock, asockComplete complete, void *data);
 void asockFree(asock **sock);

@@ -7,8 +7,6 @@
 #endif
 #include <clib/list.h>
 //==============================================================================
-static listItem *listItemForData(list *lst, void *data, bool exact);
-//==============================================================================
 static void *listDefault_insert(void *data);
 static void  listDefault_free(void *data);
 static i32   listDefault_compare(void *dataA, void *dataB);
@@ -98,7 +96,7 @@ void listInsertItem(list *lst, listItem *item, listItem *before)
 
 void listRemove(list *lst, void *data, bool exact)
 {
-  listItem *item = listItemForData(lst, data, exact);
+  listItem *item = listItemWithData(lst, data, exact);
   if(item) listRemoveItem(lst, item);
 }
 
@@ -193,6 +191,26 @@ u32 listIndexOfItem(list *lst, listItem *item)
   return 0xFFFFFFFF;
 }
 
+listItem *listItemWithData(list *lst, void *data, bool exact)
+{
+  listItem *curr = lst->origin;
+  while(curr)
+  {
+    if(exact)
+    {
+      if(curr->data == data)
+        return curr;
+    }
+    else
+    {
+      if(lst->type->dataCompare(curr->data, data) == 0)
+        return curr;
+    }
+    curr = curr->next;
+  }
+  return NULL;
+}
+
 //------------------------------------------------------------------------------
 
 void listIterate(list *lst, listIterator iterator, void *data)
@@ -258,28 +276,6 @@ static void listDefault_free(void *data)
 static i32 listDefault_compare(void *dataA, void *dataB)
 {
   return (dataA == dataB) ? 0 : 1;
-}
-
-//==============================================================================
-
-static listItem *listItemForData(list *lst, void *data, bool exact)
-{
-  listItem *curr = lst->origin;
-  while(curr)
-  {
-    if(exact)
-    {
-      if(curr->data == data)
-        return curr;
-    }
-    else
-    {
-      if(lst->type->dataCompare(curr->data, data) == 0)
-        return curr;
-    }
-    curr = curr->next;
-  }
-  return NULL;
 }
 
 //==============================================================================

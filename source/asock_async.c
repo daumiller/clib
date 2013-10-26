@@ -52,26 +52,52 @@ static void requestPollingFor(asock *sock, int flags, threadPoolFunct workOp, u3
 static bool checkPollingFlags(asock *sock, int desired);
 static bool asockPartialFunctionCheck(asock *sock, int status, char *msg, u32 *ms);
 static u64  getTimeMilliseconds();
-#define UNBUSY(z) pthread_mutex_lock(&(z->mutex)); z->busy=false; pthread_mutex_unlock(&(z->mutex));
 //==============================================================================
-void asockAcceptWork(asock *sock, bool queue);
-void asockAcceptRetry(void *arg);
-void asockAcceptComplete(void *arg);
+#define UNBUSY(z) pthread_mutex_lock(&(z->mutex)); z->busy=false; pthread_mutex_unlock(&(z->mutex));
+#define ASOCK_READ_UNTIL_CHUNK_SIZE 4096
+//==============================================================================
+struct asockReadSomeData
+{
+  u32  *read;
+  void *buff;
+};
+struct asockReadUntilData
+{
+  void **receiver;
+  void  *until;
+  u8     untilLen;
+  u32   *readPtr;
+  u32    read;
+  u32    max;
+  u8    *buff;
+  u32    buffSize;
+  u32    matchOffset;
+  u32    partial;
+  void  *data;
+  asockComplete complete;
+};
+//==============================================================================
+static void asockAcceptWork(asock *sock, bool queue);
+static void asockAcceptRetry(void *arg);
+static void asockAcceptComplete(void *arg);
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void asockConnectWork(asock *sock);
-void asockConnectComplete(void *arg);
+static void asockConnectWork(asock *sock);
+static void asockConnectComplete(void *arg);
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void asockDisconnectWork(asock *sock);
-void asockDisconnectComplete(void *arg);
+static void asockDisconnectWork(asock *sock);
+static void asockDisconnectComplete(void *arg);
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void asockReadSomeEnter(void *arg);
-void asockReadSomeWork(void *arg);
+static void asockReadSome_noBusy(asock *sock, void *buff, u32 max, u32 *read, asockComplete complete, void *data);
+static void asockReadSomeEnter(void *arg);
+static void asockReadSomeWork(void *arg);
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void asockReadEnter(void *arg);
-void asockReadWork(void *arg);
+static void asockReadEnter(void *arg);
+static void asockReadWork(void *arg);
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void asockWriteEnter(void *arg);
-void asockWriteWork(void *arg);
+static void asockReadUntil_Helper(asock *sock, struct asockReadUntilData *data, u32 status, char *message);
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+static void asockWriteEnter(void *arg);
+static void asockWriteWork(void *arg);
 //==============================================================================
 
 void asockAccept(asock *sock, asockComplete complete, void *data)
@@ -94,25 +120,64 @@ void asockDisconnect(asock *sock, asockComplete complete, void *data)
   asockDisconnectWork(sock);
 }
 
-void asockReadSome(asock *sock, void *buff, u32 max, asockComplete complete, void *data)
+void asockReadSome(asock *sock, void *buff, u32 max, u32 *read, asockComplete complete, void *data)
 {
-  printf("** asockReadSOME **\n");
-  if(checkBusyLockComplete(sock, complete, data, 1) == false) return;
+  if(read) *read = 0;
+  if(checkBusyLockComplete(sock, complete, data, 2) == false) return;
+  asockReadSome_noBusy(sock, buff, max, read, complete, data);
+}
+static void asockReadSome_noBusy(asock *sock, void *buff, u32 max, u32 *read, asockComplete complete, void *data)
+{
+  if(read) *read = 0;
+  struct asockReadSomeData *rsd = (struct asockReadSomeData *)malloc(sizeof(struct asockReadSomeData));
+  rsd->read = read;
+  rsd->buff = buff;
+
   sock->workOpPartial = 0;
   sock->workOpNumber  = max;
-  sock->workOpExtra   = buff;
-  sock->workOpTimeout = getTimeMilliseconds() + (u64)sock->timeout;
+  sock->workOpExtra   = rsd;
+  sock->workOpTimeout = (sock->timeout > 0) ? 0 : (getTimeMilliseconds() + (u64)sock->timeout);
   threadPoolAddWork(sock->worker->pool, asockReadSomeEnter, sock);
 }
 
 void asockRead(asock *sock, void *buff, u32 length, asockComplete complete, void *data)
 {
-  if(checkBusyLockComplete(sock, complete, data, 1) == false) return;
+  if(checkBusyLockComplete(sock, complete, data, 2) == false) return;
   sock->workOpPartial = 0;
   sock->workOpNumber  = length;
   sock->workOpExtra   = buff;
-  sock->workOpTimeout = getTimeMilliseconds() + (u64)sock->timeout;
+  sock->workOpTimeout = (sock->timeout > 0) ? 0 : (getTimeMilliseconds() + (u64)sock->timeout);
   threadPoolAddWork(sock->worker->pool, asockReadEnter, sock);
+}
+
+void asockReadUntil(asock *sock, void **recv, u32 max, u32 *read, void *until, u8 untilLen, asockComplete complete, void *data)
+{
+  *recv = NULL;
+  if(*read) *read = 0;
+  struct asockReadUntilData *rud = (struct asockReadUntilData *)malloc(sizeof(struct asockReadUntilData));
+  if(checkBusyLockComplete(sock, (asockComplete)asockReadUntil_Helper, (void *)rud, 2) == false)
+  {
+    free(rud);
+    return;
+  }
+
+  rud->receiver    = recv;
+  rud->until       = until;
+  rud->untilLen    = untilLen;
+  rud->readPtr     = read;
+  rud->read        = 0;
+  rud->max         = max;
+  rud->buff        = (u8 *)malloc(ASOCK_READ_UNTIL_CHUNK_SIZE);
+  rud->buffSize    = ASOCK_READ_UNTIL_CHUNK_SIZE;
+  rud->matchOffset = 0;
+  rud->partial     = 0;
+  rud->complete    = complete;
+  rud->data        = data;
+
+  u32 leftToRead = rud->max;
+  if(leftToRead > ASOCK_READ_UNTIL_CHUNK_SIZE)
+    leftToRead = ASOCK_READ_UNTIL_CHUNK_SIZE;
+  asockReadSome_noBusy(sock, rud->buff, leftToRead, &(rud->partial), (asockComplete)asockReadUntil_Helper, (void *)rud);
 }
 
 void asockWrite(asock *sock, void *buff, u32 length, asockComplete complete, void *data)
@@ -121,7 +186,7 @@ void asockWrite(asock *sock, void *buff, u32 length, asockComplete complete, voi
   sock->workOpPartial = 0;
   sock->workOpNumber  = length;
   sock->workOpExtra   = buff;
-  sock->workOpTimeout = getTimeMilliseconds() + (u64)sock->timeout;
+  sock->workOpTimeout = (sock->timeout > 0) ? 0 : (getTimeMilliseconds() + (u64)sock->timeout);
   threadPoolAddWork(sock->worker->pool, asockWriteEnter, sock);
 }
 
@@ -133,6 +198,8 @@ static bool checkBusyLockComplete(asock *sock, asockComplete complete, void *dat
   {
     if(sock->busy == false)
     {
+      if((connected ==  2) && (sock->connected == false) && (sock->readBuffLen == 0))
+        { pthread_mutex_unlock(&(sock->mutex)); queueCompletionProxy(sock, complete, data, ASOCK_STATUS_DISCONN, clstrdup("Socket not connected")); return false; }
       if((connected ==  1) && (sock->connected == false))
         { pthread_mutex_unlock(&(sock->mutex)); queueCompletionProxy(sock, complete, data, ASOCK_STATUS_DISCONN, clstrdup("Socket not connected")); return false; }
       if((connected == -1) && (sock->connected == true ))
@@ -274,14 +341,14 @@ static bool checkPollingFlags(asock *sock, int desired)
 
 //==============================================================================
 
-void asockAcceptRetry(void *arg)
+static void asockAcceptRetry(void *arg)
 {
   asock *sock = (asock *)arg;
   if(checkPollingFlags(sock, PLATFORM_INP) == false) return;
   asockAcceptWork(sock, false);
 }
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void asockAcceptWork(asock *sock, bool queue)
+static void asockAcceptWork(asock *sock, bool queue)
 {
   socklen_t socklen = sizeof(struct sockaddr_in);
   struct sockaddr_in *addr = (struct sockaddr_in *)calloc(sizeof(struct sockaddr_in), 1);
@@ -312,7 +379,7 @@ void asockAcceptWork(asock *sock, bool queue)
     threadPoolAddWork(sock->worker->pool, asockAcceptComplete, sock);
 }
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void asockAcceptComplete(void *arg)
+static void asockAcceptComplete(void *arg)
 {
   asock *sock = (asock *)arg;
 
@@ -339,7 +406,7 @@ void asockAcceptComplete(void *arg)
 
 //==============================================================================
 
-void asockConnectWork(asock *sock)
+static void asockConnectWork(asock *sock)
 {
   u16 port   = (u16   )sock->workOpNumber;
   char *host = (char *)sock->workOpExtra;
@@ -380,7 +447,7 @@ void asockConnectWork(asock *sock)
   threadPoolAddWork(sock->worker->pool, asockConnectComplete, sock);
 }
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void asockConnectComplete(void *arg)
+static void asockConnectComplete(void *arg)
 {
   asock *sock = (asock *)arg;
   if(checkPollingFlags(sock, PLATFORM_OUT) == false) return;
@@ -410,7 +477,7 @@ void asockConnectComplete(void *arg)
 
 //==============================================================================
 
-void asockDisconnectWork(asock *sock)
+static void asockDisconnectWork(asock *sock)
 {
   int status = shutdown(sock->fd, SHUT_RDWR);
   if(status == -1)
@@ -436,7 +503,7 @@ void asockDisconnectWork(asock *sock)
 #endif
 }
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void asockDisconnectComplete(void *arg)
+static void asockDisconnectComplete(void *arg)
 {
   asock *sock = (asock *)arg;
   if(checkPollingFlags(sock, PLATFORM_HUP) == false) return;
@@ -446,19 +513,55 @@ void asockDisconnectComplete(void *arg)
 }
 
 //==============================================================================
-void asockReadSomeEnter(void *arg)
+static void asockReadSomeEnter(void *arg)
 {
   ((asock *)arg)->workOpEvents = PLATFORM_INP;
   asockReadSomeWork(arg);
 }
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void asockReadSomeWork(void *arg)
+static void asockReadSomeWork(void *arg)
 {
   asock *sock = (asock *)arg; u32 ms;
-  if(asockPartialFunctionCheck(sock, PLATFORM_INP, "ReadSome timed out.", &ms) == false) return;
+  struct asockReadSomeData *rsd = (struct asockReadSomeData *)(sock->workOpExtra);
 
-  //attempt to read some
-  ssize_t status = read(sock->fd, (char *)sock->workOpExtra, (size_t)sock->workOpNumber);
+  if(asockPartialFunctionCheck(sock, PLATFORM_INP, "ReadSome timed out.", &ms) == false)
+  {
+    free(rsd);
+    return;
+  }
+
+  ssize_t status;
+  //see if we already have some data (left over from an asockReadUntil)
+  if(sock->readBuffLen > 0)
+  {
+    u32 taken = sock->readBuffLen;
+
+    //simple case, we can take it all
+    if(taken <= sock->workOpNumber)
+    {
+      memcpy(rsd->buff, sock->readBuff, taken);
+      free(sock->readBuff);
+      sock->readBuff = NULL;
+      sock->readBuffLen = 0;
+    }
+    //PITA case, we can only take part of the readBuff
+    else
+    {
+      taken = sock->workOpNumber;
+      memcpy(rsd->buff, sock->readBuff, taken);
+      sock->readBuffLen -= taken;
+      u8 *newBuff = (u8 *)malloc(sock->readBuffLen);
+      memcpy(newBuff, sock->readBuff + taken, sock->readBuffLen);
+      free(sock->readBuff);
+      sock->readBuff = newBuff;
+    }
+
+    status = (ssize_t)taken;
+  }
+  //else, attempt to read some
+  else
+    status = read(sock->fd, (char *)rsd->buff, (size_t)sock->workOpNumber);
+
   if(status == -1)
   {
     if(errno == EAGAIN)
@@ -468,6 +571,7 @@ void asockReadSomeWork(void *arg)
     }
     else
     {
+      free(rsd);
       char *message, buff[1024];
       message = (strerror_r(status, buff, 1024) == 0) ? clstrdup(buff) : clstrdup("Unknown read() error");
       UNBUSY(sock);
@@ -477,6 +581,7 @@ void asockReadSomeWork(void *arg)
   }
   else if(status == 0)
   {
+    free(rsd);
     sock->connected = false;
     UNBUSY(sock);
     sock->complete(sock, sock->completeData, ASOCK_STATUS_DISCONN, clstrdup("Connection closed by peer"));
@@ -484,37 +589,59 @@ void asockReadSomeWork(void *arg)
   }
   else
   {
-    sock->workOpNumber  -= (u32)status;
-    sock->workOpPartial += (u32)status;
-    //got some?
-    if(sock->workOpPartial > 0)
-    {
-      UNBUSY(sock);
-      sock->complete(sock, sock->completeData, ASOCK_STATUS_OK, NULL);
-      return;
-    }
-    else
-    {
-      requestPollingFor(sock, PLATFORM_INP, asockReadSomeWork, (u32)ms);
-      return;
-    }
+    if(rsd->read)
+      *(rsd->read) = (u32)status;
+    free(rsd);
+    UNBUSY(sock);
+    sock->complete(sock, sock->completeData, ASOCK_STATUS_OK, NULL);
+    return;
   }
 }
 
 //==============================================================================
-void asockReadEnter(void *arg)
+static void asockReadEnter(void *arg)
 {
   ((asock *)arg)->workOpEvents = PLATFORM_INP;
   asockReadWork(arg);
 }
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void asockReadWork(void *arg)
+static void asockReadWork(void *arg)
 {
   asock *sock = (asock *)arg; u32 ms;
   if(asockPartialFunctionCheck(sock, PLATFORM_INP, "Read timed out.", &ms) == false) return;
 
-  //attempt to read some
-  ssize_t status = read(sock->fd, ((char *)sock->workOpExtra) + sock->workOpPartial, (size_t)sock->workOpNumber);
+  ssize_t status;
+  //see if we already have some data (left over from an asockReadUntil)
+  if(sock->readBuffLen > 0)
+  {
+    u32 taken = sock->readBuffLen;
+
+    //simple case, we can take it all
+    if(taken <= sock->workOpNumber)
+    {
+      memcpy(sock->workOpExtra, sock->readBuff, taken);
+      free(sock->readBuff);
+      sock->readBuff = NULL;
+      sock->readBuffLen = 0;
+    }
+    //PITA case, we can only take part of the readBuff
+    else
+    {
+      taken = sock->workOpNumber;
+      memcpy(sock->workOpExtra, sock->readBuff, taken);
+      sock->readBuffLen -= taken;
+      u8 *newBuff = (u8 *)malloc(sock->readBuffLen);
+      memcpy(newBuff, sock->readBuff + taken, sock->readBuffLen);
+      free(sock->readBuff);
+      sock->readBuff = newBuff;
+    }
+
+    status = (ssize_t)taken;
+  }
+  //else, attempt to read some
+  else
+    status = read(sock->fd, (char *)sock->workOpExtra, (size_t)sock->workOpNumber);
+
   if(status == -1)
   {
     if(errno == EAGAIN)
@@ -558,13 +685,144 @@ void asockReadWork(void *arg)
 }
 
 //==============================================================================
-void asockWriteEnter(void *arg)
+static void asockReadUntil_Helper(asock *sock, struct asockReadUntilData *rud, u32 status, char *message)
+{
+  // read until disconnect
+  if((status == ASOCK_STATUS_DISCONN) && (rud->untilLen == 0))
+  {
+    if(rud->readPtr) *(rud->readPtr) = rud->read;
+    *(rud->receiver) = realloc(rud->buff, rud->read);
+    asockComplete complete = rud->complete;
+    void *data = rud->data;
+    free(rud);
+    complete(sock, data, ASOCK_STATUS_OK, NULL);
+    return;
+  }
+
+  // errors...
+  if((status != ASOCK_STATUS_OKAY) && (status != ASOCK_STATUS_DISCONN))
+  {
+    asockComplete complete = rud->complete;
+    void *data = rud->data;
+    free(rud->buff);
+    free(rud);
+    complete((void *)sock, data, status, message);
+    return;
+  }
+  if((status == ASOCK_STATUS_DISCONN) && (rud->partial == 0))
+  {
+    asockComplete complete = rud->complete;
+    void *data = rud->data;
+    free(rud->buff);
+    free(rud);
+    complete(sock, data, ASOCK_STATUS_HITMAX, clstrdup("didn't find ReadUntil token within expected length"));
+    return;
+  }
+
+  // we have some data to process
+  rud->read += rud->partial;
+
+  // simple case : we're reading until disconnect
+  if(rud->untilLen == 0)
+  {
+    rud->buffSize = rud->read + ASOCK_READ_UNTIL_CHUNK_SIZE;
+    rud->buff     = realloc(rud->buff, rud->buffSize);
+    asockReadSome_noBusy(sock, rud->buff, ASOCK_READ_UNTIL_CHUNK_SIZE, &(rud->partial), (asockComplete)asockReadUntil_Helper, (void *)rud);
+    return;
+  }
+
+  // simple-ish case : not enough data to compare
+  if((rud->read - rud->matchOffset) < rud->untilLen)
+  {
+    rud->buffSize = rud->read + ASOCK_READ_UNTIL_CHUNK_SIZE;
+    rud->buff     = realloc(rud->buff, rud->buffSize);
+    if(rud->read < rud->max)
+      asockReadSome_noBusy(sock, rud->buff, ASOCK_READ_UNTIL_CHUNK_SIZE, &(rud->partial), (asockComplete)asockReadUntil_Helper, (void *)rud);
+    else
+    {
+      if(rud->readPtr) *(rud->readPtr) = rud->read;
+      *(rud->receiver) = realloc(rud->buff, rud->read);
+      asockComplete complete = rud->complete;
+      void *data = rud->data;
+      free(rud);
+      complete(sock, data, ASOCK_STATUS_HITMAX, clstrdup("didn't find ReadUntil token within expected length"));
+    }
+    return;
+  }
+
+  // we have to scan for a match...
+  u8 matched;
+  for(u32 a,b,i=rud->matchOffset; i<rud->read; i++)
+  {
+    a=i; b=0; matched=0;
+    while((a<rud->read) && (rud->buff[a] == ((u8 *)rud->until)[b]))
+    {
+      matched++;
+      // we actually found the damn thing
+      if(matched == rud->untilLen)
+      {
+        // store remaining data in our partial buffer
+        if((a+1) < rud->read) //partial data
+        {
+          u32 partial = rud->read - (a+1);
+          sock->readBuff = (u8 *)realloc(sock->readBuff, sock->readBuffLen + partial);
+          memcpy(sock->readBuff + sock->readBuffLen, rud->buff+a+1, partial);
+          sock->readBuffLen += partial;
+        }
+        // return up-to, and including, our "until" token
+        if(rud->readPtr) *(rud->readPtr) = rud->read;
+        *(rud->receiver) = realloc(rud->buff, rud->read);
+        asockComplete complete = rud->complete;
+        void *data = rud->data;
+        free(rud);
+        complete(sock, data, ASOCK_STATUS_OK, NULL);
+        return;
+      }
+      a++; b++;
+    }
+    // store our matchOffset so we're not scanning the whole buffer every readSome()
+    rud->matchOffset = i;
+    if(a == rud->read)
+    {
+      // this check is important:
+      // if we have a partial match running up until the end of our data,
+      // bail early so we don't increment the matchOffset variable passed the beginning of the partial
+      break;
+    }
+  }
+  // we didn't find a match...
+
+  // have we read as much as we can?
+  if(rud->buffSize == rud->max)
+  {
+    rud->buffSize = rud->read + ASOCK_READ_UNTIL_CHUNK_SIZE;
+    rud->buff     = realloc(rud->buff, rud->buffSize);
+    if(rud->readPtr) *(rud->readPtr) = rud->read;
+    *(rud->receiver) = realloc(rud->buff, rud->read);
+    asockComplete complete = rud->complete;
+    void *data = rud->data;
+    free(rud);
+    complete(sock, data, ASOCK_STATUS_HITMAX, clstrdup("didn't find ReadUntil token within expected length"));
+    return;
+  }
+
+  // more to read then
+  u32 leftToRead = rud->max - rud->buffSize;
+  if(leftToRead > ASOCK_READ_UNTIL_CHUNK_SIZE)
+    leftToRead = ASOCK_READ_UNTIL_CHUNK_SIZE;
+  rud->buffSize += leftToRead;
+  rud->buff = (u8 *)realloc(rud->buff, rud->buffSize);
+  asockReadSome_noBusy(sock, rud->buff + rud->read, leftToRead, &(rud->partial), (asockComplete)asockReadUntil_Helper, (void *)rud);
+}
+
+//==============================================================================
+static void asockWriteEnter(void *arg)
 {
   ((asock *)arg)->workOpEvents = PLATFORM_OUT;
   asockWriteWork(arg);
 }
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void asockWriteWork(void *arg)
+static void asockWriteWork(void *arg)
 {
   asock *sock = (asock *)arg; u32 ms;
   if(asockPartialFunctionCheck(sock, PLATFORM_OUT, "Write timed out.", &ms) == false) return;
@@ -620,16 +878,22 @@ static bool asockPartialFunctionCheck(asock *sock, int status, char *msg, u32 *m
   }
 
   //remaining time?
-  u64 now = getTimeMilliseconds();
-  if( now >= sock->workOpTimeout)
+  if(sock->workOpTimeout > 0)
   {
-    UNBUSY(sock);
-    sock->complete(sock, sock->completeData, ASOCK_STATUS_TIMEOUT, clstrdup(msg));
-    return false;
-  }
+    u64 now = getTimeMilliseconds();
+    if( now >= sock->workOpTimeout)
+    {
+      UNBUSY(sock);
+      sock->complete(sock, sock->completeData, ASOCK_STATUS_TIMEOUT, clstrdup(msg));
+      return false;
+    }
 
-  //assign remaining time
-  *ms = sock->workOpTimeout - now;
+    //assign remaining time
+    *ms = sock->workOpTimeout - now;
+  }
+  else
+    *ms = 0;
+
   return true;
 }
 //------------------------------------------------------------------------------

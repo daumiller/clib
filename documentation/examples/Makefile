@@ -14,9 +14,13 @@ debug :
 	$(eval CFLAGS +=  -g  )
 
 tests : arguments  \
+        asock      \
         base64     \
-        sha256     \
+        fileSystem \
+        hash       \
+        list       \
         regex      \
+        sha256     \
         string     \
         threadPool
 
@@ -25,10 +29,15 @@ tests : arguments  \
 
 clean :
 	rm -f arguments
+	rm -f asock
 	rm -f base64
-	rm -f sha256
+	rm -f fileSystem
+	rm -f hash
+	rm -f list
 	rm -f regex
+	rm -f sha256
 	rm -f string
 	rm -f threadPool
 
 veryclean : clean
+

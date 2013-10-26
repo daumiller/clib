@@ -36,11 +36,13 @@ asock *asockCreate(asockWorker *worker, u32 timeout)
   if(worker == NULL) return NULL;
 
   asock *sock = (asock *)calloc(sizeof(asock), 1);
-  sock->fd        = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-  sock->timeout   = timeout;
-  sock->worker    = worker;
-  sock->connected = false;
-  sock->busy      = false;
+  sock->fd          = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+  sock->timeout     = timeout;
+  sock->readBuff    = NULL;
+  sock->readBuffLen = 0;
+  sock->worker      = worker;
+  sock->connected   = false;
+  sock->busy        = false;
   pthread_mutex_init(&(sock->mutex), NULL);
   fcntl(sock->fd, F_SETFL, fcntl(sock->fd,F_GETFL,0) | O_NONBLOCK);
 

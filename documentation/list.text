@@ -1,0 +1,450 @@
+clib > list
+================================================================================
+  Generic (doubly linked) list.
+
+--------------------------------------------------------------------------------
+Header
+--------------------------------------------------------------------------------
+#include <clib/list.h>
+
+--------------------------------------------------------------------------------
+Function Prototypes
+--------------------------------------------------------------------------------
+** listType Functions **
+  Prototypes used by the *listType* structure.
+
+  typedef void *(*listDataInsert )(void *data);
+  // data insertion function.
+  // For direct assignment, simply return the provided data pointer.
+  // For more involved resource usage return a pointer to the desired data container.
+
+  typedef void *(*listDataCopy)(void *data);
+  // data copy function.
+  // For most cases this can/will be the same function as listDataInsert.
+  // This function provides an alternative method of resource copying,
+  // for use (only) in the *listDuplicate* and *listToArray* functions.
+
+  typedef void (*listDataFree)(void *data);
+  // data cleanup function.
+  // Cleanup any resources consumed by a listDataInsert or listDataCopy.
+
+  typedef i32 (*listDataCompare)(void *dataA, void *dataB);
+  // data comparison function.
+  // Return 0 for an exact match, <0 for dataA<dataB, >0 for dataA>dataB.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listIterator **
+  Iteration function used by *listIterate*
+
+  typedef bool (*listIterator)(list *lst, listItem *item, void *data);
+  // Return true to continue iteration, false to abort.
+
+--------------------------------------------------------------------------------
+Structures
+--------------------------------------------------------------------------------
+** list **
+  Main list container.
+  Callers should not need to modify any members.
+
+  typedef struct
+  {
+    listType *type;   // *listType* type of list
+    listItem *origin; // first item in list
+    listItem *final;  // last item in list
+    u32       count;  // total number of items in list
+  } list;
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listType **
+  List type. Functions to customize list for specific resource usage.
+  (see function prototypes above for individual function details)
+  The default (internal) listType treats all data as (void *)s,
+  using direct assignment with no new allocations.
+
+  typedef struct
+  {
+    listDataInsert  dataInsert;  // data insertion function
+    listDataCopy    dataCopy;    // data copy function (usually == dataInsert)
+    listDataFree    dataFree;    // data cleanup function
+    listDataCompare dataCompare; // data comparison function
+  } listType;
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listItem **
+  A single item in the list.
+  Callers should not need to modify any members.
+
+  typedef struct clibListItem
+  {
+    void *data;                // data for this item
+    struct clibListItem *prev; // previous item
+    struct clibListItem *next; // next item
+  } listItem;
+
+--------------------------------------------------------------------------------
+Creation/Cleanup Functions
+--------------------------------------------------------------------------------
+** listCreate **
+  Create a new, empty *list*.
+
+  PROTOTYPE:
+    list *listCreate();
+
+  RETURNS:
+    Newly allocated *list*.
+
+  NOTES:
+    > Caller should cleanup returned handle with *listFree* when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listCreateWithType **
+  Create a new, empty *list* of a specific type.
+
+  PROTOTYPE:
+    list *listCreateWithType(listType *type);
+
+  PARAMETERS:
+    listType *type | type of list to create / data management functions
+
+  RETURNS:
+    Newly allocated *list*.
+
+  NOTES:
+    > Caller should cleanup returned handle with *listFree* when finished.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listFree **
+  Free any resources used by a *list*.
+
+  PROTOTYPE:
+    void listFree(list **lst);
+
+  PARAMETERS:
+    list **list | the list to cleanup
+
+  NOTES:
+    > *list will be set to NULL.
+
+--------------------------------------------------------------------------------
+Insert/Append/Move/Remove Functions
+--------------------------------------------------------------------------------
+** listAppend **
+  Append new data to a *list*.
+
+  PROTOTYPE:
+    void listAppend(list *lst, void *data);
+
+  PARAMETERS:
+    list *lst  | *list* to append to
+    void *data | the data to append
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listAppendItem **
+  Append an *listItem* to a *list*.
+
+  PROTOTYPE:
+    void listAppendItem(list *lst, listItem *item);
+
+  PARAMETERS:
+    list     *lst  | *list* to append to
+    listItem *item | *listItem* to append
+
+  NOTES:
+    > (listItem *item) should not already be an item of (list *lst).
+    > Ensure *listItem* is compatible with the list's *listType* functions.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listInsert **
+  Insert new data in a list, before a specific *listItem*.
+
+  PROTOTYPE:
+    void listInsert(list *lst, void *data, listItem *before);
+
+  PARAMETERS:
+    list     *list   | *list* to insert in
+    void     *data   | data to insert
+    listItem *before | *listItem* that new item will be inserted before
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listInsertItem **
+  Insert one *listItem* in a list, before another *listItem*.
+
+  PROTOTYPE:
+    void listInsertItem(list *lst, listItem *item, listItem *before);
+
+  PARAMETERS:
+    list     *lst    | *list* to insert in
+    listItem *item   | *listItem* to insert
+    listItem *before | *listItem* that new item will be inserted before
+
+  NOTES:
+    > (listItem *item) should not already be an item of (list *lst).
+    > Ensure *listItem* is compatible with the list's *listType* functions.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listRemove **
+  Remove data from a *list*.
+
+  PROTOTYPE:
+    void listRemove(list *lst, void *data, bool exact);
+
+  PARAMETERS:
+    list *lst   | *list* to remove from
+    void *data  | data to remove from list
+    bool  exact | if(true)  only remove the first item with exactly the same data pointer
+                \ if(false) will remove the first item that *listType*->dataCompare says is equal.
+
+  NOTES:
+    > Okay to call without verifying that data is actually in the *list* first.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listRemoveItem **
+  Remove an existing *listItem* from a *list*.
+
+  PROTOTYPE:
+    void listRemoveItem(list *lst, listItem *item);
+
+  PARAMETERS:
+    list     *lst  | *list* to remove from
+    listItem *item | *listItem* to remove
+
+  NOTES:
+    > (listItem *item) should already be an item in (list *lst).
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listMoveItem **
+  Move an existing *listItem* to a new position within a *list*.
+
+  PROTOTYPE:
+    void listMoveItem(list *lst, listItem *item, listItem *before);
+
+  PARAMETERS:
+    list *lst        | *list* to move within
+    listItem *item   | *listItem* to move
+    listItem *before | *listItem* to be moved before
+
+  NOTES:
+    > (listItem *item) and (listItem *before) should both already be items in (list *lst).
+    > This is the only method of moving an item within a *list* that is sure to survive any
+    \ *listType* data operations. (Because none are performed here, where they would be with
+    \ a *listRemoveItem* + *listInsertItem*.)
+
+--------------------------------------------------------------------------------
+Indexing Functions
+--------------------------------------------------------------------------------
+** listIndexAt **
+  Return (a direct reference to) data at list index.
+
+  PROTOTYPE:
+    void *listIndexAt(list *lst, u32 index);
+
+  PARAMETERS:
+    list *lst   | *list* to index
+    u32   index | index of data to retrieve
+
+  RETURNS:
+    If found, (void *data) member of the *listItem* at (u32 index).
+    If index out of bounds, NULL.
+
+  NOTES:
+    > The returned handle should NOT be cleaned up the caller
+    \ (it is still owned by the providing *listItem*).
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listIndexAtItem **
+  Return a (direct reference to) *listItem* at list index.
+
+  PROTOTYPE:
+    listItem *listIndexAtItem(list *lst, u32 index);
+
+  PARAMETERS:
+    list *lst   | *list* to index
+    u32   index | index of item to retrieve
+
+  RETURNS:
+    If found, (listItem *) at (u32 index).
+    if index out of bounds, NULL.
+
+  NOTES:
+    > The returned handle should NOT be cleaned up or modified the caller
+    \ (it is still in use by the providing *list*).
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listIndexOf **
+  Return index of data in *list*.
+
+  PROTOTYPE:
+    u32 listIndexOf(list *lst, void *data, bool exact);
+
+  PARAMETERS:
+    list *lst   | *list* to search
+    void *data  | data to search for
+    bool  exact | if(true) match data by (void *) values
+                \ if(false) match data by *listType*->dataCompare
+
+  RETURNS:
+    If found, u32 index of first *listItem* with matching data.
+    If not found, 0xFFFFFFFF (u32 maximum).
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listIndexOfItem **
+  Return index of *listItem* in *list*.
+
+  PROTOTYPE:
+    u32 listIndexOfItem(list *lst, listItem *item);
+
+  PARAMETERS:
+    list     *lst  | *list* to search
+    listItem *item | (exact) *listItem* to search for
+
+  RETURNS:
+    If found, u32 index of *listItem* within *list*.
+    If not found, 0xFFFFFFFF (u32 maximum).
+
+  NOTES:
+    > This function searches for an exact *listItem* match,
+    \ the item's ->data is not evaluated.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listItemWithData **
+  Return *listItem* item containing specified data.
+
+  PROTOTYPE:
+    listItem *listItemWithData(list *lst, void *data, bool exact);
+
+  PARAMETERS:
+    list *lst  | *list* to search
+    void *data | data to search for
+    bool  exact | if(true) match data by (void *) values
+                \ if(false) match data by *listType*->dataCompare
+
+  RETURNS:
+    If found, pointer to first occurence of *listItem* containing specified data.
+    If not found, NULL.
+
+--------------------------------------------------------------------------------
+Other Functions
+--------------------------------------------------------------------------------
+** listIterate **
+  Iterate over each item in a *list*.
+
+  PROTOTYPE:
+    void listIterate(list *lst, listIterator iterator, void *data);
+
+  PARAMETERS:
+    list         *lst      | *list* to iterate
+    listIterator  iterator | iteration function to call with each item
+    void         *data     | extra/user data to pass to iterator
+
+  NOTES:
+    > Iteration function should return true to continue, or false to abort.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listDuplicate **
+  Create a duplicate of a *list*.
+
+  PROTOTYPE:
+    list *listDuplicate(list *lst);
+
+  PARAMETERS:
+    list *lst | the *list* to duplicate
+
+  RETURNS:
+    A newly allocated *list*.
+
+  NOTES:
+    > Caller should cleanup returned handle with *listFree* when finished.
+    > Unless given a *listType* with a *dataCopy* function that specifically does otherwise,
+    \ a new list should have completely independent copies of any data items contained.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** listToArray **
+  Create an array of all *listItem*s contained within a *list*.
+
+  PROTOTYPE:
+    void **listToArray(list *lst, u32 *count);
+
+  PARAMETERS:
+    list *lst   | *list* to create array from
+    u32  *count | u32* to store size of array in, or NULL (OPTIONAL)
+
+  RETURNS:
+    A newly allocated array of *listItem*s, with *listType*->dataCopy copied data.
+
+  NOTES:
+    > Each *listItem* in the array should be *listType*->dataFree()d when finished.
+    > The actual returned array should be free()d by the caller when finished.
+
+--------------------------------------------------------------------------------
+Example
+--------------------------------------------------------------------------------
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <clib/string.h>
+#include <clib/list.h>
+
+// list iterator printing function
+bool iterator(list *lst, listItem *item, void *data);
+
+// a custom *listType* to handle c strings
+void *stringList_Insert(void *data);
+void  stringList_Free(void *data);
+i32   stringList_Compare(void *dataA, void *dataB);
+listType stringList =
+{
+  .dataInsert  = stringList_Insert,
+  .dataCopy    = stringList_Insert,
+  .dataFree    = stringList_Free  ,
+  .dataCompare = stringList_Compare
+};
+
+int main(int argc, char **argv)
+{
+  // create a list, add some items
+  list *lst = listCreateWithType(&stringList);
+  listAppend(lst, "Item One"  );
+  listAppend(lst, "Item Two"  );
+  listAppend(lst, "Item Three");
+
+  listAppend(lst, "Item Five" );
+
+  // insert a 'zero' item before our 'one' item
+  listInsert(lst, "Item Zero", listItemWithData(lst, "Item One", false));
+
+  // remove the 'five' item (will use *listType*->dataCompare)
+  listRemove(lst, "Item Five", false);
+
+  // iterate the list with our printing function
+  listIterate(lst, iterator, NULL);
+
+  // cleanup
+  listFree(&lst);
+  return 0;
+}
+
+bool iterator(list *lst, listItem *item, void *data)
+{
+  printf("%s\n", (char *)(item->data));
+  return true;
+}
+
+void *stringList_Insert(void *data)
+{
+  //create a copy of the input data (cstr) when inserting
+  return clstrdup((char *)data);
+}
+void stringList_Free(void *data)
+{
+  //free our clstrdup()ed string when cleaning up
+  free(data);
+}
+i32 stringList_Compare(void *dataA, void *dataB)
+{
+  //use strcmp() as our comparison function (for non-exact matching)
+  return strcmp((char *)dataA, (char *)dataB);
+}
+
+================================================================================
+--------------------------------------------------------------------------------
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
