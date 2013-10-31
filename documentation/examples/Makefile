@@ -2,11 +2,16 @@ DIRINC  = ../../include
 DIRLIB  = ../../library
 CC      = clang
 CFLAGS  = -Wall -std=c99 -I$(DIRINC)
-#ifdef __APPLE__
-CLIBS   = -pthread $(DIRLIB)/clib.a
-#elif __linux__
-#CLIBS   = -pthread -lrt $(DIRLIB)/clib.a
-#endif
+
+UNAME_S = $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+  # __APPLE__
+  CLIBS   = -pthread -lz $(DIRLIB)/clib.a
+endif
+ifeq ($(UNAME_S),Linux)
+  # __linux__
+  CLIBS   = -pthread -lrt -lz $(DIRLIB)/clib.a
+endif
 
 all : tests
 

@@ -1,7 +1,8 @@
 clib > asock
 ================================================================================
   Asynchronous sockets and work manager.
-  Currently fixed with TCP/IP mode.
+  Currently fixed with TCP/IPv4 mode.
+  With optional SSH tunneling features.
 
 --------------------------------------------------------------------------------
 Header
@@ -19,6 +20,12 @@ Constants
   #define ASOCK_STATUS_CONN    0x0004 // connected (already)
   #define ASOCK_STATUS_BADHOST 0x0005 // unable to resolve/route host
   #define ASOCK_STATUS_HITMAX  0x0006 // read maximum amount of data in an until
+  #define ASOCK_STATUS_SSH     0x8000 // general SSH error
+  #define ASOCK_STATUS_SSHHAND 0x8001 // SSH handshake error
+  #define ASOCK_STATUS_SSHHOST 0x8002 // host rejected by SSH verification function
+  #define ASOCK_STATUS_SSHUSER 0x8003 // bad SSH user
+  #define ASOCK_STATUS_SSHAUTH 0x8004 // SSH authentication failed
+  #define ASOCK_STATUS_SSHCHAN 0x8005 // SSH host closed channel
   #define ASOCK_STATUS_FAILED  0xFFFF // other/general failure
 
 --------------------------------------------------------------------------------
@@ -40,6 +47,22 @@ Function Prototypes
     > If your completion handler is provided a (char *message) of non-NULL,
     \ it is responsible for free()ing that error message when finished.
     \ (this message is always provided from the heap, to allow more flexibility.)
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockSshHostVerify **
+  Callback function to verify host keys.
+
+  PROTOTYPE:
+    typedef bool (*asockSshHostVerify)(char *host, u8 *md5, u8 *sha1);
+
+  PARAMETERS:
+    char *host | host name (zero terminated c string)
+    u8   *md5  | 16 byte array of MD5 hash of host key
+    u8   *sha1 | 20 byte array of SHA1 hash of host key
+
+  RETURNS:
+    true, to acknowledge valid key, and allow SSH connection to continue.
+    false, to abort SSH connection
 
 --------------------------------------------------------------------------------
 Structures
@@ -68,6 +91,11 @@ Structures
     void           *workOpExtra;   // extra work data; generic data
   #ifdef __linux__
     int             fdTimeout;     // linux only, file descriptor for timeout timerfd
+  #endif
+  #ifdef _CLIB_SSH_
+    LIBSSH2_SESSION  *sshSession;  // SSH session object
+    LIBSSH2_CHANNEL  *sshChannel;  // SSH channel object
+    LIBSSH2_LISTENER *sshListener; // SSH listener object
   #endif
   } asock;
 
@@ -164,7 +192,7 @@ Socket Functions
 
   PARAMETERS:
     asock *sock | *asock* to bind
-    char  *ip   | hostname or ip to bind to
+    char  *ip   | hostname/ip to bind to, or NULL for all available
     u16    port | port to bind to
     u32   *errn | u32 to receive error code, or NULL (OPTIONAL)
     char **errs | char* to receive error message, or NULL (OPTIONAL)
@@ -176,6 +204,25 @@ Socket Functions
   NOTES:
     > On error, if errs was provided,
     \ caller is responsible for free()ing error message string.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockGetBound **
+  Get locally bound address and port for an _already_connected_ *asock*.
+
+  PROTOTYPE:
+    bool asockGetBound(asock *sock, char **ip, u16 *port);
+
+  PARAMETERS:
+    asock  *sock | *asock* to get details for
+    char  **ip   | &(char *) to receive newly allocated c string of IPv4 address, or NULL
+    u16    *port | &(u16) to receive port number, or NULL
+
+  RETURNS:
+    On success, true.
+    On error, false; no additional information is provided.
+
+  NOTES:
+    > Any failure is likely due to calling on a disconnected *asock*.
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ** asockListen **
@@ -413,6 +460,156 @@ Worker Functions
   NOTES:
     > All startd *asockWorker*s should be stopped before cleaning up.
     > (bool force) should not be used if you're depending on workers to do cleanup.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockSshInitialize **
+  Initialize SSH library (libssh2).
+
+  PROTOTYPE:
+    bool asockSshInitialize();
+
+  RETURNS:
+    Initialization successful ? true : false
+
+  NOTES:
+    > Must be called before using any other SSH functionality.
+    > Only call once per application.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockSshCleanup **
+  Free any resources used by SSH library.
+
+  PROTOTYPE:
+    void asockSshCleanup();
+
+  NOTES:
+    > Do not use any other SSH functionality after calling.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockSshConnect **
+  Connect an *asock* to an SSH server.
+
+  PROTOTYPE:
+    void asockSshConnect(asock *sock, char *host, u16 port, asockSshHostVerify verify,
+                         char *user, char *pass, char *keypub, char *keypriv, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock               *sock    | *asock* to connect from
+    char                *host    | hostname to connect to
+    u16                  port    | host port (22)
+    asockSsshHostVerify  verify  | host fingerprint verification
+    char                *user    | user name
+    char                *pass    | password for password-auth, keyfile password for key-auth, or NULL
+    char                *keypub  | path to public key file for key-auth (if wanted/needed), or NULL
+    char                *keypriv | path to private key file for key-auth, or NULL
+    asockComplete  complete      | completion callback function
+    void          *data          | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+  NOTES:
+    > SSH functions may block worker threads.
+    > asockSshConnect() will attempt to fake keyboard-interactive auth if you give it a (char *pass).
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockSshTunnelTo **
+  Create an outgoing SSH tunnel through an _already_connected_ SSH server.
+
+  PROTOTYPE:
+    void asockSshTunnelTo(asock *sock, char *host3rd, u16 port3rd, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock *sock             | *asock* of existing SSH connection
+    char  *host3rd          | 3rd party connection host name
+    u16    port3rd          | 3rd party connection port
+    asockComplete  complete | completion callback function
+    void          *data     | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+  NOTES:
+    > SSH functions may block worker threads.
+    > Tunneling should only be done once per *asock*/asockSshConnect().
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockSshTunnelFromListen **
+  Create an incoming SSH tunnel through an _already_connected_ SSH server.
+
+  PROTOTYPE:
+    void asockSshTunnelFromListen(asock *sock, char *hostBind, u16 portBind, u16 *portUsed, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock *sock             | *asock* of existing connection
+    char  *hostBind         | hostname to bind to at server, or NULL for all available
+    u16    portBind         | port to bind to at server
+    asockComplete  complete | completion callback function
+    void          *data     | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+  NOTES:
+    > SSH functions may block worker threads.
+    > Tunneling should only be done once per *asock*/asockSshConnect().
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockSshTunnelFromAccept **
+  Accept a connection from a SSH listening tunnel.
+
+  PROTOTYPE:
+    void asockSshTunnelFromAccept(asock *sock, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock         *sock     | *asock* to accept from
+    asockComplete  complete | completion callback function
+    void          *data     | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+  NOTES:
+    > SSH functions may block worker threads.
+    > Only call after a successful *asockSshTunnelFromListen*.
+    > For SSH tunnel accepts, the existing *asock* is reused; a new one is _not_ created.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockSshTunnelFromUnlisten **
+  Stop listening on an SSH tunnel.
+
+  PROTOTYPE:
+    void asockSshTunnelFromUnlisten(asock *sock, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock         *sock     | *asock* to stop listening on
+    asockComplete  complete | completion callback function
+    void          *data     | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+  NOTES:
+    > SSH functions may block worker threads.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+** asockSshDisconnect **
+  Disconnect from an SSH connect.
+
+  PROTOTYPE:
+    void asockSshDisconnect(asock *sock, asockComplete complete, void *data);
+
+  PARAMETERS:
+    asock         *sock     | *asock* to disconnect
+    asockComplete  complete | completion callback function
+    void          *data     | data to pass to completion callback
+
+  RETURNS:
+    via *asockComplete* callback
+
+  NOTES:
+    > This function should be used instead of *asockDisconnect* for SSH *asock*s.
+    > SSH functions may block worker threads.
 
 --------------------------------------------------------------------------------
 Example

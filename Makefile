@@ -6,18 +6,29 @@ DIRLIB  = $(TOP)/library
 DIRTST  = $(TOP)/test
 DIRBIN  = $(TOP)/test/bin
 CC      = clang
-CFLAGS  = -Wall -std=c99 -I$(DIRINC) -DPCREHEADER='"$(DIRPCRE)/include/pcre.h"'
+CFLAGS  = -Wall -std=c99 -I$(DIRINC) -DPCREHEADER='"$(DIRPCRE)/include/pcre.h"' -D_CLIB_SSH_
 STRIP   = strip
-#ifdef __APPLE__
-DIRPCRE = /Users/dillon/Development/builds/pcre
-DIRINST = /Users/dillon/Development/builds/clib/install
-TSTLIB  = $(DIRLIB)/clib.a -pthread
-#elif __linux__
-#DIRPCRE = /home/dillon/bin/pcre.lib
-#DIRINST = /home/dillon/bin/clib.lib
-#TSTLIB  = $(DIRLIB)/clib.a -pthread -lrt
-#endif
-LIBLIB  = $(DIRPCRE)/lib/libpcre.a
+
+UNAME_S = $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+  # __APPLE__
+  DIRINST = /Users/dillon/Development/builds/clib/install
+  DIRPCRE = /Users/dillon/Development/builds/pcre
+  DIRSSH2 = /Users/dillon/Development/builds/libssh2
+  DIROSSL = /Users/dillon/Development/builds/openssl
+  DIROSSLIB = $(DIROSSL)/lib
+  TSTLIB  = $(DIRLIB)/clib.a -pthread -lz
+endif
+ifeq ($(UNAME_S),Linux)
+  # __linux__
+  DIRINST = /home/dillon/bin/clib.lib
+  DIRPCRE = /home/dillon/bin/pcre.lib
+  DIRSSH2 = /home/dillon/bin/libssh2.lib
+  DIROSSL = /home/dillon/bin/openssl.lib
+  DIROSSLIB = $(DIROSSL)/lib64
+  TSTLIB  = $(DIRLIB)/clib.a -pthread -lrt -ldl -lz
+endif
+$(eval CFLAGS += -I$(DIRSSH2)/include)
 
 all : clib tests
 
@@ -46,9 +57,14 @@ $(DIRLIB)/clib.a : $(DIROBJ)/string.o      \
                    $(DIROBJ)/asock_async.o \
                    $(DIROBJ)/fileSystem.o
 	mkdir -p $(DIRLIB)
-	cd $(DIROBJ);               \
-	ar -x $(LIBLIB);            \
-	ar rcs $(DIRLIB)/clib.a *.o
+	mkdir -p $(DIROBJ)/ingest
+	cd $(DIROBJ)/ingest;            \
+	ar -x $(DIRPCRE)/lib/libpcre.a; \
+	ar -x $(DIRSSH2)/lib/libssh2.a; \
+	ar -x $(DIROSSLIB)/libssl.a;    \
+	ar -x $(DIROSSLIB)/libcrypto.a; \
+	cd ..;                          \
+	ar rcs $(DIRLIB)/clib.a *.o $(DIROBJ)/ingest/*.o
 
 $(DIROBJ)/%.o : $(DIRSRC)/%.c
 	mkdir -p $(DIROBJ)
@@ -69,3 +85,4 @@ veryclean :
 	rm -rf $(DIRBIN)
 	rm -rf $(DIRLIB)
 
+remake : veryclean all

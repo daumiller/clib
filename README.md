@@ -20,9 +20,11 @@ C helper library
   + OS X
   + Linux
 
-## Requirements ##
-  + [PCRE](http://www.pcre.org/)
+## Dependencies ##
   + C99 mode
+  + [PCRE](http://www.pcre.org/) (required; for regular expressions)
+  + [OpenSSL](http://www.openssl.org/) (optional; for asock SSH tunneling)
+  + [libssh2](http://www.libssh2.org/) (optional; for asock SSH tunneling)
 
 ## License ##
   + BSD

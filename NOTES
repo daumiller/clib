@@ -2,4 +2,9 @@
   asock uses eventfd on linux, which requires a kernel version of 2.6.22 or greater.
 * pcre options
   pcre configured with "./configure --prefix=$(DIRPCRE) --disable-cpp --enable-jit --enable-utf"
-
+* openssl options
+  linux: ./config no-shared --prefix=$(DIRSSL)
+  os x: ./Configure darwin64-x86_64-cc no-shared --prefix=$(DIRSSL)
+  ln -s $(DIRSSL)/lib $(DIRSSL/lib64 # sometimes required if openssl uses the wrong name & libssh2 complains
+* libssh2 options
+  ./configure --disable-shared --with-openssl --with-libssl-prefix=$(DIRSSL) --prefix=$(DIRSSH)

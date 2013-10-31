@@ -55,6 +55,13 @@ static u64  getTimeMilliseconds();
 //==============================================================================
 #define UNBUSY(z) pthread_mutex_lock(&(z->mutex)); z->busy=false; pthread_mutex_unlock(&(z->mutex));
 #define ASOCK_READ_UNTIL_CHUNK_SIZE 4096
+#ifdef _CLIB_SSH_
+# define VERIFY_SSH_CHANNEL(s,c,d) if(s->sshSession != NULL) if(s->sshChannel == NULL) \
+          { queueCompletionProxy(s, c, d, ASOCK_STATUS_SSH, clstrdup("No channel open for SSH session")); return; }
+  static bool asockSshRead(asock *sock, char *buff, size_t len, ssize_t *status);
+#else
+# define VERIFY_SSH_CHANNEL
+#endif
 //==============================================================================
 struct asockReadSomeData
 {
@@ -77,7 +84,7 @@ struct asockReadUntilData
   asockComplete complete;
 };
 //==============================================================================
-static void asockAcceptWork(asock *sock, bool queue);
+static void asockAcceptWork(asock *sock);
 static void asockAcceptRetry(void *arg);
 static void asockAcceptComplete(void *arg);
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -103,7 +110,7 @@ static void asockWriteWork(void *arg);
 void asockAccept(asock *sock, asockComplete complete, void *data)
 {
   if(checkBusyLockComplete(sock, complete, data, 0) == false) return;
-  asockAcceptWork(sock, true);
+  threadPoolAddWork(sock->worker->pool, (threadPoolFunct)asockAcceptWork, sock);
 }
 
 void asockConnect(asock *sock, char *host, u16 port, asockComplete complete, void *data)
@@ -123,6 +130,7 @@ void asockDisconnect(asock *sock, asockComplete complete, void *data)
 void asockReadSome(asock *sock, void *buff, u32 max, u32 *read, asockComplete complete, void *data)
 {
   if(read) *read = 0;
+  VERIFY_SSH_CHANNEL(sock, complete, data)
   if(checkBusyLockComplete(sock, complete, data, 2) == false) return;
   asockReadSome_noBusy(sock, buff, max, read, complete, data);
 }
@@ -142,6 +150,7 @@ static void asockReadSome_noBusy(asock *sock, void *buff, u32 max, u32 *read, as
 
 void asockRead(asock *sock, void *buff, u32 length, asockComplete complete, void *data)
 {
+  VERIFY_SSH_CHANNEL(sock, complete, data)
   if(checkBusyLockComplete(sock, complete, data, 2) == false) return;
   sock->workOpPartial = 0;
   sock->workOpNumber  = length;
@@ -154,6 +163,8 @@ void asockReadUntil(asock *sock, void **recv, u32 max, u32 *read, void *until, u
 {
   *recv = NULL;
   if(*read) *read = 0;
+  VERIFY_SSH_CHANNEL(sock, complete, data)
+
   struct asockReadUntilData *rud = (struct asockReadUntilData *)malloc(sizeof(struct asockReadUntilData));
   if(checkBusyLockComplete(sock, (asockComplete)asockReadUntil_Helper, (void *)rud, 2) == false)
   {
@@ -182,6 +193,7 @@ void asockReadUntil(asock *sock, void **recv, u32 max, u32 *read, void *until, u
 
 void asockWrite(asock *sock, void *buff, u32 length, asockComplete complete, void *data)
 {
+  VERIFY_SSH_CHANNEL(sock, complete, data)
   if(checkBusyLockComplete(sock, complete, data, 1) == false) return;
   sock->workOpPartial = 0;
   sock->workOpNumber  = length;
@@ -345,10 +357,10 @@ static void asockAcceptRetry(void *arg)
 {
   asock *sock = (asock *)arg;
   if(checkPollingFlags(sock, PLATFORM_INP) == false) return;
-  asockAcceptWork(sock, false);
+  asockAcceptWork(sock);
 }
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-static void asockAcceptWork(asock *sock, bool queue)
+static void asockAcceptWork(asock *sock)
 {
   socklen_t socklen = sizeof(struct sockaddr_in);
   struct sockaddr_in *addr = (struct sockaddr_in *)calloc(sizeof(struct sockaddr_in), 1);
@@ -361,10 +373,7 @@ static void asockAcceptWork(asock *sock, bool queue)
       char *message, buff[1024];
       message = (strerror_r(errno, buff, 1024) == 0) ? clstrdup(buff) : clstrdup("Unknown accept() error");
       UNBUSY(sock);
-      if(queue)
-        queueCompletionProxy(sock, sock->complete, sock->completeData, ASOCK_STATUS_FAILED, message);
-      else
-        sock->complete(sock, sock->completeData, ASOCK_STATUS_FAILED, message);
+      sock->complete(sock, sock->completeData, ASOCK_STATUS_FAILED, message);
       return;
     }
     requestPollingFor(sock, PLATFORM_INP, asockAcceptRetry, sock->timeout);
@@ -373,10 +382,7 @@ static void asockAcceptWork(asock *sock, bool queue)
 
   free(addr);
   sock->workOpNumber = (u32)status;
-  if(queue == false)
-    asockAcceptComplete((void *)sock);
-  else
-    threadPoolAddWork(sock->worker->pool, asockAcceptComplete, sock);
+  asockAcceptComplete((void *)sock);
 }
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 static void asockAcceptComplete(void *arg)
@@ -560,7 +566,16 @@ static void asockReadSomeWork(void *arg)
   }
   //else, attempt to read some
   else
+  {
+#ifdef _CLIB_SSH_
+    if(sock->sshSession && sock->sshChannel)
+    {
+      if(asockSshRead(sock, (char *)rsd->buff, (size_t)sock->workOpNumber, &status) == false) { free(rsd); return; }
+    }
+    else
+#endif
     status = read(sock->fd, (char *)rsd->buff, (size_t)sock->workOpNumber);
+  }
 
   if(status == -1)
   {
@@ -640,7 +655,16 @@ static void asockReadWork(void *arg)
   }
   //else, attempt to read some
   else
+  {
+#ifdef _CLIB_SSH_
+    if(sock->sshSession && sock->sshChannel)
+    {
+      if(asockSshRead(sock, (char *)sock->workOpExtra, (size_t)sock->workOpNumber, &status) == false) { return; }
+    }
+    else
+#endif
     status = read(sock->fd, (char *)sock->workOpExtra, (size_t)sock->workOpNumber);
+  }
 
   if(status == -1)
   {
@@ -687,7 +711,7 @@ static void asockReadWork(void *arg)
 //==============================================================================
 static void asockReadUntil_Helper(asock *sock, struct asockReadUntilData *rud, u32 status, char *message)
 {
-  //UNBUSY()s here:
+  //UNBUSY()s :
   //  if readSome returns TO US, and WITHOUT ERROR, the socket will not be UNBUSY()d yet.
   //  if readSome returns TO US, and WITH ERROR, we'll alreday by UNBUSY()d (simply to avoid additional sock->complete checks in readSome)
   // so, UNBUSY() any completion exit from an incoming ASOCK_STATUS_OK
@@ -836,7 +860,38 @@ static void asockWriteWork(void *arg)
   if(asockPartialFunctionCheck(sock, PLATFORM_OUT, "Write timed out.", &ms) == false) return;
 
   //attempt to write some more
-  ssize_t status = write(sock->fd, ((char *)sock->workOpExtra) + sock->workOpPartial, (size_t)sock->workOpNumber);
+  ssize_t status;
+#ifdef _CLIB_SSH_
+  if(sock->sshSession && sock->sshChannel)
+  {
+    if(libssh2_channel_eof(sock->sshChannel))
+    {
+      UNBUSY(sock);
+      sock->complete(sock, sock->completeData, ASOCK_STATUS_SSHCHAN, clstrdup("SSH host closed channel"));
+      return;
+    }
+
+    //USER-NOTE: docs say pass at least 32K to SSH write() for maximum performance
+    status = libssh2_channel_write(sock->sshChannel, ((char *)sock->workOpExtra) + sock->workOpPartial, (size_t)sock->workOpNumber);
+    if(status == LIBSSH2_ERROR_EAGAIN)
+    {
+      status = -1;
+      errno  = EAGAIN;
+    }
+    else if(status < 0)
+    {
+      UNBUSY(sock);
+      char *errStr; int errNo = libssh2_session_last_error(sock->sshSession, &errStr, NULL, 1);
+      if(errNo == LIBSSH2_ERROR_TIMEOUT)
+        { free(errStr); sock->complete(sock, sock->completeData, ASOCK_STATUS_TIMEOUT, clstrdup("Operation timed out")); }
+      else
+        sock->complete(sock, sock->completeData, ASOCK_STATUS_SSH, errStr);
+      return;
+    }
+  }
+  else
+#endif
+  status = write(sock->fd, ((char *)sock->workOpExtra) + sock->workOpPartial, (size_t)sock->workOpNumber);
   if(status == -1)
   {
     if(errno == EAGAIN)
@@ -923,6 +978,366 @@ static u64 getTimeMilliseconds()
 }
 
 //==============================================================================
+#ifdef _CLIB_SSH_
+struct ashConnectData
+{
+  char               *host;
+  asockSshHostVerify  verify;
+  char               *user;
+  char               *pass;
+  char               *keypub;
+  char               *keypriv;
+  asockComplete       complete;
+  void               *data;
+};
+static struct ashConnectData *ashConnectDataCreate(char *host, asockSshHostVerify verify, char *user, char *pass, char *keypub, char *keypriv, asockComplete complete, void *data)
+{
+  struct ashConnectData *ascd = (struct ashConnectData *)calloc(1, sizeof(struct ashConnectData));
+  if(host)    ascd->host    = clstrdup(host);
+  if(user)    ascd->user    = clstrdup(user);
+  if(pass)    ascd->pass    = clstrdup(pass);
+  if(keypub)  ascd->keypub  = clstrdup(keypub);
+  if(keypriv) ascd->keypriv = clstrdup(keypriv);
+  ascd->verify              = verify;
+  ascd->complete            = complete;
+  ascd->data                = data;
+  return ascd;
+}
+static void ashConnectDataFree(struct ashConnectData *ascd)
+{
+  if(ascd->host)    free(ascd->host);
+  if(ascd->user)    free(ascd->user);
+  if(ascd->pass)    free(ascd->pass);
+  if(ascd->keypub)  free(ascd->keypub);
+  if(ascd->keypriv) free(ascd->keypriv);
+  free(ascd);
+}
+static void asockSshInteractiveFaker(const char *user, int userLen, const char *instr, int instrLen, int promptCount,
+                              const LIBSSH2_USERAUTH_KBDINT_PROMPT *prompts, LIBSSH2_USERAUTH_KBDINT_RESPONSE *responses,
+                              void **abstract)
+{
+  asock *sock = (asock *)(*abstract);       if(!sock) return;
+  char *pass = (char *)(sock->workOpExtra); if(!pass) return;
+  responses[0].text = clstrdup(pass);
+  responses[0].length = strlen(pass);
+  sock->workOpExtra = NULL;
+}
+
+static void asockSshConnect_Helper(asock *sock, struct ashConnectData *ascd, u32 status, char *message)
+{
+  asockComplete complete = ascd->complete;
+  void *data = ascd->data;
+
+  if(status != ASOCK_STATUS_OKAY)
+  {
+    ashConnectDataFree(ascd);
+    complete(sock, data, status, message);
+    return;
+  }
+
+  sock->sshSession = libssh2_session_init_ex(NULL,NULL,NULL,sock);
+  if(sock->sshSession == NULL)
+  {
+    ashConnectDataFree(ascd);
+    close(sock->fd); sock->connected = false;
+    complete(sock, data, ASOCK_STATUS_SSH, clstrdup("Error creating SSH session"));
+    return;
+  }
+  libssh2_session_set_timeout(sock->sshSession, (long)sock->timeout);
+
+  status = libssh2_session_handshake(sock->sshSession, sock->fd);
+  if(status != 0)
+  {
+    ashConnectDataFree(ascd);
+    libssh2_session_free(sock->sshSession); sock->sshSession = NULL;
+    close(sock->fd); sock->connected = false;
+    char *errStr; int errNo = libssh2_session_last_error(sock->sshSession, &errStr, NULL, 1);
+    if(errNo == LIBSSH2_ERROR_TIMEOUT)
+      { free(errStr); complete(sock, data, ASOCK_STATUS_TIMEOUT, clstrdup("Operation timed out")); }
+    else
+      complete(sock, data, ASOCK_STATUS_SSHHAND, errStr);
+    return;
+  }
+
+  bool accepted = ascd->verify(ascd->host,
+                               (u8 *)libssh2_hostkey_hash(sock->sshSession, LIBSSH2_HOSTKEY_HASH_MD5),
+                               (u8 *)libssh2_hostkey_hash(sock->sshSession, LIBSSH2_HOSTKEY_HASH_SHA1));
+  if(accepted == false)
+  {
+    ashConnectDataFree(ascd);
+    libssh2_session_free(sock->sshSession); sock->sshSession = NULL;    
+    close(sock->fd); sock->connected = false;
+    complete(sock, data, ASOCK_STATUS_SSHHOST, clstrdup("SSH host rejected"));
+    return;
+  }
+
+  char *authTypes = libssh2_userauth_list(sock->sshSession, ascd->user, strlen(ascd->user));
+  if(authTypes == NULL)
+  {
+    ashConnectDataFree(ascd);
+    libssh2_session_free(sock->sshSession); sock->sshSession = NULL;
+    close(sock->fd); sock->connected = false;
+    complete(sock, data, ASOCK_STATUS_SSHUSER, clstrdup("SSH user rejected"));
+    return;
+  }
+
+  accepted = false;
+  if(accepted == false) if(ascd->pass != NULL) if(strstr(authTypes, "password") != NULL)
+    accepted = (libssh2_userauth_password(sock->sshSession, ascd->user, ascd->pass) == 0);
+  if(accepted == false) if(ascd->pass != NULL) if(strstr(authTypes, "keyboard-interactive") != NULL)
+  {
+    // fake it
+    sock->workOpExtra = ascd->pass;
+    accepted = (libssh2_userauth_keyboard_interactive(sock->sshSession, ascd->user, asockSshInteractiveFaker) == 0);
+  }
+  if(accepted == false) if(ascd->keypriv != NULL) if(strstr(authTypes, "publickey") != NULL)
+    accepted = (libssh2_userauth_publickey_fromfile(sock->sshSession, ascd->user, ascd->keypub, ascd->keypriv, ascd->pass) == 0);
+  if(accepted == false)
+  {
+    ashConnectDataFree(ascd);
+    libssh2_session_free(sock->sshSession); sock->sshSession = NULL;
+    close(sock->fd); sock->connected = false;
+    complete(sock, data, ASOCK_STATUS_SSHUSER, clstrdup("SSH authentication failed"));
+    return;
+  }
+
+  //// we we're setting non-blocking mode here; but it appears we should be waiting until after creating a channel...
+  //libssh2_session_set_blocking(sock->sshSession, 0);
+  ashConnectDataFree(ascd);
+  complete(sock, data, ASOCK_STATUS_OKAY, NULL);
+}
+
+void asockSshConnect(asock *sock, char *host, u16 port, asockSshHostVerify verify, char *user, char *pass, char *keypub, char *keypriv, asockComplete complete, void *data)
+{
+  struct ashConnectData *ascd = ashConnectDataCreate(host, verify, user, pass, keypub, keypriv, complete, data);
+  asockConnect(sock, host, port, (asockComplete)asockSshConnect_Helper, ascd);
+}
+
+struct ashProxyData
+{
+  asock *sock;
+  char  *host;
+  u16    port;
+  u16   *portUsed;
+};
+static struct ashProxyData *ashProxyDataCreate(asock *sock, char *host, u16 port, u16 *portUsed)
+{
+  struct ashProxyData *aspd = (struct ashProxyData *)calloc(1, sizeof(struct ashProxyData));
+  aspd->sock = sock;
+  aspd->port = port;
+  aspd->portUsed = portUsed;
+  if(host) aspd->host = clstrdup(host);
+  return aspd;
+}
+static void ashProxyDataFree(struct ashProxyData *aspd)
+{
+  if(aspd->host) free(aspd->host);
+  free(aspd);
+}
+
+static bool asockSshSpin(asock *sock)
+{
+  struct timeval timeout;
+  int ms = (int)(sock->timeout % 1000);
+  timeout.tv_sec  = (sock->timeout - ms) / 1000;
+  timeout.tv_usec = (ms * 1000);
+
+  int io = libssh2_session_block_directions(sock->sshSession);
+  fd_set monitor, *reader, *writer;
+
+  FD_ZERO(&monitor); FD_SET(sock->fd, &monitor);
+  reader = (io & LIBSSH2_SESSION_BLOCK_INBOUND ) ? (&monitor) : NULL;
+  writer = (io & LIBSSH2_SESSION_BLOCK_OUTBOUND) ? (&monitor) : NULL;
+
+  int status = select(sock->fd+1, reader, writer, NULL, &timeout);
+  return (status > 0);
+}
+
+static void asockSshTunnelTo_Helper(struct ashProxyData *aspd)
+{
+  asock *sock = aspd->sock;
+  sock->sshChannel = libssh2_channel_direct_tcpip(sock->sshSession, aspd->host, aspd->port);
+  ashProxyDataFree(aspd);
+  if(sock->sshChannel == NULL)
+  {
+    UNBUSY(sock);
+    char *errStr; int errNo = libssh2_session_last_error(sock->sshSession, &errStr, NULL, 1);
+    if(errNo == LIBSSH2_ERROR_TIMEOUT)
+      { free(errStr); sock->complete(sock, sock->completeData, ASOCK_STATUS_TIMEOUT, clstrdup("Operation timed out")); }
+    else
+      sock->complete(sock, sock->completeData, ASOCK_STATUS_SSH, errStr);
+    return;
+  }
+  libssh2_session_set_blocking(sock->sshSession, 0); // set session as non-blocking
+  UNBUSY(sock);
+  sock->complete(sock, sock->completeData, ASOCK_STATUS_OKAY, NULL);
+}
+void asockSshTunnelTo(asock *sock, char *host3rd, u16 port3rd, asockComplete complete, void *data)
+{
+  if(checkBusyLockComplete(sock, complete, data, 1) == false) return;
+  struct ashProxyData *aspd = ashProxyDataCreate(sock, host3rd, port3rd, NULL);
+  threadPoolAddWork(sock->worker->pool, (threadPoolFunct)asockSshTunnelTo_Helper, aspd);
+}
+
+static void asockSshTunnelFromListen_Helper(struct ashProxyData *aspd)
+{
+  asock *sock = aspd->sock;
+  int selectedPort;
+  // "16" for backlog is default taken from libssh2_channel_forward_listen() macro
+  sock->sshListener = libssh2_channel_forward_listen_ex(sock->sshSession, aspd->host, aspd->port, &selectedPort, 16);
+  if(aspd->portUsed) *(aspd->portUsed) = (u16)selectedPort;
+  ashProxyDataFree(aspd);
+  if(sock->sshListener == NULL)
+  {
+    char *errStr; int errNo = libssh2_session_last_error(sock->sshSession, &errStr, NULL, 1);
+    if(errNo == LIBSSH2_ERROR_TIMEOUT)
+      { free(errStr); sock->complete(sock, sock->completeData, ASOCK_STATUS_TIMEOUT, clstrdup("Operation timed out")); }
+    else
+      sock->complete(sock, sock->completeData, ASOCK_STATUS_SSHHAND, errStr);
+  }
+  else
+    sock->complete(sock, sock->completeData, ASOCK_STATUS_OKAY, NULL);
+}
+void asockSshTunnelFromListen(asock *sock, char *hostBind, u16 portBind, u16 *portUsed, asockComplete complete, void *data)
+{
+  //DEFAULT hostBind : "0.0.0.0" -> "All Available"
+  //DEFAULT portBind : 0         -> Host Selected, will populate *portUsed
+  if(checkBusyLockComplete(sock, complete, data, 1) == false) return;
+  struct ashProxyData *aspd = ashProxyDataCreate(sock, hostBind, portBind, portUsed);
+  threadPoolAddWork(sock->worker->pool, (threadPoolFunct)asockSshTunnelFromListen_Helper, aspd);
+}
+
+static void asockSshTunnelFromAccept_Helper(asock *sock)
+{
+  sock->sshChannel = libssh2_channel_forward_accept(sock->sshListener);
+  if(sock->sshChannel == NULL)
+  {
+    UNBUSY(sock);
+    char *errStr; int errNo = libssh2_session_last_error(sock->sshSession, &errStr, NULL, 1);
+    if(errNo == LIBSSH2_ERROR_TIMEOUT)
+      { free(errStr); sock->complete(sock, sock->completeData, ASOCK_STATUS_TIMEOUT, clstrdup("Operation timed out")); }
+    else
+      sock->complete(sock, sock->completeData, ASOCK_STATUS_SSHHAND, errStr);
+    return;
+  }
+  libssh2_session_set_blocking(sock->sshSession, 0); // set session as non-blocking
+  UNBUSY(sock);
+  sock->complete(sock, sock->completeData, ASOCK_STATUS_OKAY, NULL);
+}
+void asockSshTunnelFromAccept(asock *sock, asockComplete complete, void *data)
+{
+  if(checkBusyLockComplete(sock, complete, data, 1) == false) return;
+  if(sock->sshListener == NULL)
+  {
+    UNBUSY(sock);
+    queueCompletionProxy(sock, complete, data, ASOCK_STATUS_SSH, clstrdup("SSH session is not listening for connections"));
+    return;
+  }
+  threadPoolAddWork(sock->worker->pool, (threadPoolFunct)asockSshTunnelFromAccept_Helper, sock);
+}
+
+static bool asockSshTunnelFromUnlisten_Worker(asock *sock)
+{
+  int status = libssh2_channel_forward_cancel(sock->sshListener);
+  while(status == LIBSSH2_ERROR_EAGAIN)
+  {
+    if(asockSshSpin(sock) == false) return false;
+    status = libssh2_channel_forward_cancel(sock->sshListener);
+  }
+  if(status == 0) sock->sshListener = NULL;
+  return (status == 0);
+}
+static void asockSshTunnelFromUnlisten_Helper(asock *sock)
+{
+  bool status = asockSshTunnelFromUnlisten_Worker(sock);
+  UNBUSY(sock);
+  if(status == false)
+  {
+    char *errStr; int errNo = libssh2_session_last_error(sock->sshSession, &errStr, NULL, 1);
+    if(errNo == LIBSSH2_ERROR_TIMEOUT)
+      { free(errStr); sock->complete(sock, sock->completeData, ASOCK_STATUS_TIMEOUT, clstrdup("Operation timed out")); }
+    else
+      sock->complete(sock, sock->completeData, ASOCK_STATUS_SSHHAND, errStr);
+  }
+  else
+    sock->complete(sock, sock->completeData, ASOCK_STATUS_OKAY, NULL);
+}
+void asockSshTunnelFromUnlisten(asock *sock, asockComplete complete, void *data)
+{
+  if(checkBusyLockComplete(sock, complete, data, 1) == false) return;
+  threadPoolAddWork(sock->worker->pool, (threadPoolFunct)asockSshTunnelFromUnlisten_Helper, sock);
+}
+
+void asockSshDisconnect_Worker(asock *sock)
+{
+  asockComplete complete = sock->complete;
+  void *data = sock->completeData;
+
+  if(sock->sshListener != NULL)
+    if(asockSshTunnelFromUnlisten_Worker(sock) == false)
+      { char *errStr; libssh2_session_last_error(sock->sshSession, &errStr, NULL, 1);  UNBUSY(sock); complete(sock, data, ASOCK_STATUS_SSH, errStr); return; }
+
+  if(sock->sshChannel != NULL)
+  {
+    while(libssh2_channel_close(sock->sshChannel) == LIBSSH2_ERROR_EAGAIN)
+      if(asockSshSpin(sock) == false)
+        { char *errStr; libssh2_session_last_error(sock->sshSession, &errStr, NULL, 1);  UNBUSY(sock); complete(sock, data, ASOCK_STATUS_SSH, errStr); return; }
+
+    while(libssh2_channel_wait_closed(sock->sshChannel) == LIBSSH2_ERROR_EAGAIN)
+      if(asockSshSpin(sock) == false)
+        { UNBUSY(sock); complete(sock, data, ASOCK_STATUS_SSH, clstrdup("Error or timeout waiting for SSH channel close")); return; }
+
+    libssh2_channel_free(sock->sshChannel); sock->sshChannel = NULL;
+  }
+
+  if(sock->sshSession != NULL)
+  {
+    while(libssh2_session_disconnect(sock->sshSession, "Disconnecting") == LIBSSH2_ERROR_EAGAIN)
+      if(asockSshSpin(sock) == false)
+        { char *errStr; libssh2_session_last_error(sock->sshSession, &errStr, NULL, 1);  UNBUSY(sock); complete(sock, data, ASOCK_STATUS_SSH, errStr); return; }
+
+    libssh2_session_free(sock->sshSession); sock->sshSession = NULL;
+  }
+  close(sock->fd);
+  sock->connected = false;
+  UNBUSY(sock);
+  complete(sock, data, ASOCK_STATUS_OKAY, NULL);
+}
+void asockSshDisconnect(asock *sock, asockComplete complete, void *data)
+{
+  if(checkBusyLockComplete(sock, complete, data, 1) == false) return;
+  threadPoolAddWork(sock->worker->pool, (threadPoolFunct)asockSshDisconnect_Worker, sock);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+static bool asockSshRead(asock *sock, char *buff, size_t len, ssize_t *status)
+{
+  if(libssh2_channel_eof(sock->sshChannel))
+  {
+    UNBUSY(sock);
+    sock->complete(sock, sock->completeData, ASOCK_STATUS_SSHCHAN, clstrdup("SSH host closed channel"));
+    return false;
+  }
+
+  *status = libssh2_channel_read(sock->sshChannel, buff, len);
+  if(*status > 0) return true;
+
+  if((*status == 0) || (*status == LIBSSH2_ERROR_EAGAIN))
+  {
+    *status = -1;
+    errno  = EAGAIN;
+    return true;
+  }
+
+  //(status < 0)
+  UNBUSY(sock);
+  char *errStr; libssh2_session_last_error(sock->sshSession, &errStr, NULL, 1);
+  sock->complete(sock, sock->completeData, ASOCK_STATUS_SSH, errStr);
+  return false;
+}
+
+#endif
+
+//==============================================================================
 //------------------------------------------------------------------------------
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-

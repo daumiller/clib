@@ -49,6 +49,11 @@ asock *asockCreate(asockWorker *worker, u32 timeout)
 #ifdef __linux__
   sock->fdTimeout = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
 #endif
+#ifdef _CLIB_SSH_
+  sock->sshSession  = NULL;
+  sock->sshChannel  = NULL;
+  sock->sshListener = NULL;
+#endif
 
   asockRegister(sock);
   return sock;
@@ -62,6 +67,10 @@ void asockFree(asock **sock)
 
 #ifdef __linux__
   close((*sock)->fdTimeout);
+#endif
+#ifdef _CLIB_SSH_
+  if((*sock)->sshChannel) libssh2_channel_free((*sock)->sshChannel);
+  if((*sock)->sshSession) libssh2_session_free((*sock)->sshSession);
 #endif
 
   asockUnregister(*sock);
@@ -112,6 +121,7 @@ bool asockSetTimeout(asock *sock, u32 timeout)
 
 bool asockBind(asock *sock, char *ip, u16 port, u32 *errn, char **errs)
 {
+  //HERE: if(NULL -> inaddr_any)
   if(pthread_mutex_lock(&(sock->mutex)) != 0)
   {
     if(errn) *errn = 0;
@@ -126,38 +136,50 @@ bool asockBind(asock *sock, char *ip, u16 port, u32 *errn, char **errs)
     return false;
   }
 
-  int x;
-  struct addrinfo hints, *results; memset(&hints, 0, sizeof(struct addrinfo));
-  hints.ai_family   = AF_INET;
-  hints.ai_socktype = SOCK_STREAM;
-  hints.ai_protocol = IPPROTO_TCP;
-  int status = getaddrinfo(ip, NULL, &hints, &results);
-  if(status != 0)
+  int status, x;
+  if(ip)
   {
-    x = errno;
-    if(errn) *errn = (u32)x;
-    pthread_mutex_unlock(&(sock->mutex));
-    if(errs)
+    struct addrinfo hints, *results; memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_family   = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    status = getaddrinfo(ip, NULL, &hints, &results);
+    if(status != 0)
     {
-      char buff[1024];
-      if(strerror_r(x, buff, 1024) == 0)
-        *errs = clstrdup(buff);
-      else
-       *errs = clstrdup("Unknown error in getaddrinfo()");
+      x = errno;
+      if(errn) *errn = (u32)x;
+      pthread_mutex_unlock(&(sock->mutex));
+      if(errs)
+      {
+        char buff[1024];
+        if(strerror_r(x, buff, 1024) == 0)
+          *errs = clstrdup(buff);
+        else
+         *errs = clstrdup("Unknown error in getaddrinfo()");
+      }
+      return false;
     }
-    return false;
-  }
 
-  status = -1;
-  struct addrinfo *curr = results;
-  while((status != 0) && (curr != NULL))
-  {
-    struct sockaddr_in *addr = (struct sockaddr_in *)(results->ai_addr);
-    addr->sin_port = htons(port);
-    status = bind(sock->fd, (struct sockaddr *)addr, curr->ai_addrlen);
-    if(status != 0) { x=errno; curr=curr->ai_next; }
+    status = -1;
+    struct addrinfo *curr = results;
+    while((status != 0) && (curr != NULL))
+    {
+      struct sockaddr_in *addr = (struct sockaddr_in *)(results->ai_addr);
+      addr->sin_port = htons(port);
+      status = bind(sock->fd, (struct sockaddr *)addr, curr->ai_addrlen);
+      if(status != 0) { x=errno; curr=curr->ai_next; }
+    }
+    freeaddrinfo(results);
   }
-  freeaddrinfo(results);
+  else
+  {
+    struct sockaddr_in anyLocal;
+    anyLocal.sin_family = AF_INET;
+    anyLocal.sin_port = htons(port);
+    anyLocal.sin_addr.s_addr = htonl(INADDR_ANY);
+    status = bind(sock->fd, (struct sockaddr *)(&anyLocal), sizeof(struct sockaddr_in));
+    if(status != 0) x = errno;
+  }
 
   if(status == 0)
   {
@@ -180,6 +202,35 @@ bool asockBind(asock *sock, char *ip, u16 port, u32 *errn, char **errs)
     pthread_mutex_unlock(&(sock->mutex));
     return false;
   }
+}
+
+//------------------------------------------------------------------------------
+bool asockGetBound(asock *sock, char **ip, u16 *port)
+{
+  if(ip  ) *ip = NULL;
+  if(port) *port = 0;
+
+  if(pthread_mutex_lock(&(sock->mutex)) != 0)                          return false;
+  if(sock->busy)               { pthread_mutex_unlock(&(sock->mutex)); return false; }
+  if(sock->connected == false) { pthread_mutex_unlock(&(sock->mutex)); return false; }
+
+  struct sockaddr_in addr;
+  socklen_t len = sizeof(struct sockaddr_in);
+  int status = getsockname(sock->fd, (struct sockaddr *)(&addr), &len);
+  if(status == -1) { pthread_mutex_unlock(&(sock->mutex)); return false; }
+
+  if(ip)
+  {
+    char buff[INET_ADDRSTRLEN+1];
+    char *str = (char *)inet_ntop(AF_INET, &(addr.sin_addr), buff, INET_ADDRSTRLEN+1);
+    if(str == NULL) { pthread_mutex_unlock(&(sock->mutex)); return false; }
+    *ip = clstrdup(str);
+  }
+  if(port)
+    *port = (u16)ntohs(addr.sin_port);
+
+  pthread_mutex_unlock(&(sock->mutex));
+  return true;
 }
 
 //------------------------------------------------------------------------------
@@ -206,7 +257,7 @@ bool asockListen(asock *sock, u32 *errn, char **errs)
     pthread_mutex_unlock(&(sock->mutex));
     return false;
   }
-  int status = listen(sock->fd, 0);
+  int status = listen(sock->fd, 16);
 
   if(status == 0)
   {
@@ -233,6 +284,18 @@ bool asockListen(asock *sock, u32 *errn, char **errs)
 }
 
 //==============================================================================
+#ifdef _CLIB_SSH_
+bool asockSshInitialize()
+{
+  return (libssh2_init(0) == 0);
+}
+
+void asockSshCleanup()
+{
+  libssh2_exit();
+}
+#endif
+
+//==============================================================================
 //------------------------------------------------------------------------------
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
